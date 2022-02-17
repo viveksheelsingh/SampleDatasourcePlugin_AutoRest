@@ -283,7 +283,12 @@ namespace SamplePlugin.Controllers
             //
             // If your plugin does not rely on VaultMSI token for internal authN, use that.
 
-            // Assuming you get a handle to a stream at this point form your native Backup API.
+            // Assuming you get a handle to a stream at this point form your native Backup API. Using MockSourceDataplane here
+            Stream backupStream = MockSourceDataplane.DoBackup();
+            byte[] buffer = new byte[MockSourceDataplane.maxReadSize];
+            backupStream.Read(buffer, 0, MockSourceDataplane.maxReadSize);
+
+            // TBD: Add Pitmgr code here
 
             // Success case - Backup is typically Long running, so Async completion (LRO Status=Running)
             var response = new Response()
