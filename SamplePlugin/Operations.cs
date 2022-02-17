@@ -28,20 +28,17 @@ namespace SamplePlugin
         public Error? OpError { get; set; }
         public HttpStatusCode? StatusCode { get; set; }
 
-        public static OperationDetails CreateOperationDetails(DateTime createdTime, Response.KindEnum kind)
+        public OperationDetails (DateTime createdTime, Response.KindEnum kind)
         {
-            return new OperationDetails()
-            {
-                CreatedTime = createdTime,
-                EndTime = null,
-                PurgeTime = null,
-                OperationPayload = "custom plugin payload",
-                StartTime = createdTime,
-                Status = Microsoft.AzureBackup.DatasourcePlugin.Models.Response.StatusEnum.RunningEnum.ToString(),
-                OperationKind = kind.ToString(),
-                OpError = null,
-                StatusCode = null,
-            };
+            CreatedTime = createdTime;
+            EndTime = null;
+            PurgeTime = null;
+            OperationPayload = "custom plugin payload";
+            StartTime = createdTime;
+            Status = Response.StatusEnum.RunningEnum.ToString();
+            OperationKind = kind.ToString();
+            OpError = null;
+            StatusCode = HttpStatusCode.OK;
         }
     }
 
@@ -54,12 +51,13 @@ namespace SamplePlugin
         /// </summary>
         private static Dictionary<string, OperationDetails> opMap = new Dictionary<string, OperationDetails>();
 
-       
+        public  static int gcOffsetInHours = 8; // Operations will be purged 8 hours after their completion
+
         /// <summary>
         /// Adds a new operation to the operations map.
         /// </summary>
         /// <param name="operationid"></param>
-        public  static void AddToOperationsMap(string operationid, OperationDetails opDetails)
+        public static void AddOperation(string operationid, OperationDetails opDetails)
         {
             opMap.Add(operationid, opDetails);
         }
@@ -69,13 +67,46 @@ namespace SamplePlugin
         /// </summary>
         /// <param name="operationid"></param>
         /// <returns></returns>
-        public  static OperationDetails GetOperationDetails(string operationid)
+        public  static OperationDetails GetOperation(string operationid)
         {
             if (opMap.TryGetValue(operationid, out var opDetails))
             {
                 return opDetails;
             }
             else return null;
+        }
+
+        /// <summary>
+        /// Overload for failed case
+        /// </summary>
+        /// <param name="operationId"></param>
+        /// <param name="endTime"></param>
+        /// <param name="code"></param>
+        /// <param name="error"></param>
+        public static void UpdateOperation(string operationId, DateTime endTime, HttpStatusCode code, Error error)
+        {
+            OperationDetails opDetails = GetOperation(operationId);
+            opDetails.EndTime = endTime;
+            opDetails.PurgeTime = endTime.AddHours(gcOffsetInHours);
+            opDetails.StatusCode = code;
+            opDetails.OpError = error;
+
+            // Set back in the map
+            opMap[operationId] = opDetails;
+        }
+
+        /// <summary>
+        /// Overload for success case
+        /// </summary>
+        /// <param name="endTime"></param>
+        public static void UpdateOperation(string operationId, DateTime endTime)
+        {
+            OperationDetails opDetails = GetOperation(operationId);
+            opDetails.EndTime = endTime;
+            opDetails.PurgeTime = endTime.AddHours(gcOffsetInHours);
+
+            // Set back in the map
+            opMap[operationId] = opDetails;
         }
     }
 
