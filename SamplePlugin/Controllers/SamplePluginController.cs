@@ -13,8 +13,11 @@ namespace SamplePlugin.Controllers
     {
         private int gcOffsetInHours = 8; // Operations will be purged 8 hours after their completion
         private readonly ILogger<SamplePluginController> _logger;
+
         /// <summary>
-        /// Plugin specific implementation for maintaning the operations collection
+        /// Plugin specific implementation for maintaning the operations collection.
+        /// This sample uses an in-memory dictionary. 
+        /// For more details, please refer to: https://msazure.visualstudio.com/One/_wiki/wikis/DppDocumentation/220542/Idempotency-and-crash-scenarios
         /// </summary>
         internal Dictionary<string, OperationDetails> OperationsMap = new Dictionary<string, OperationDetails>();
 
