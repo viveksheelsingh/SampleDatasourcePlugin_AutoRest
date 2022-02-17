@@ -54,6 +54,7 @@ namespace SamplePlugin.Controllers
 
         public IActionResult TestPost(TestPayload p)
         {
+            var createdTime = DateTime.UtcNow;
             TestPayload p1 = new TestPayload()
             {
                 X = p.X + 1,
@@ -71,7 +72,21 @@ namespace SamplePlugin.Controllers
             });
 
             // Async completion
-            return StatusCode(202, JsonConvert.SerializeObject(p1));
+            var response = new Response()
+            {
+                Id = Request.Query["operationId"],
+                Kind = Microsoft.AzureBackup.DatasourcePlugin.Models.Response.KindEnum.BackupEnum,
+                Status = Microsoft.AzureBackup.DatasourcePlugin.Models.Response.StatusEnum.RunningEnum,
+                StartTime = createdTime,
+                CreatedTime = createdTime,
+                EndTime = null,
+                PurgeTime = null,
+                SucceededResponse = new BackupStatus() // Success case, dont need to return anything.
+                {
+                    LoopBackContext = "testLoopbackCtx",
+                },
+            };
+            return StatusCode(202, response);
             // return StatusCode(401, "Hello from Sample Plugin: POST!" + p.X + p.Y);
         }
         #endregion
@@ -610,7 +625,7 @@ namespace SamplePlugin.Controllers
         /// </summary>
         private async void TestLROInternal(string operationId)
         {
-            await Task.Delay(3 * 1000);
+            await Task.Delay(4 * 1000);
             Console.WriteLine("Test LRO completed");
             OperationsMap.UpdateOperation(operationId, DateTime.UtcNow);
         }
