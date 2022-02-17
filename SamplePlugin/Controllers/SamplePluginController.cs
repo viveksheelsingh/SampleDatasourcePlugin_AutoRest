@@ -60,7 +60,18 @@ namespace SamplePlugin.Controllers
                 Y = p.Y + 1,
             };
 
-            return StatusCode(200, JsonConvert.SerializeObject(p1));
+            // Add to the Operations Map
+            var opDetails = new OperationDetails(DateTime.UtcNow, Microsoft.AzureBackup.DatasourcePlugin.Models.Response.KindEnum.BackupEnum);
+            OperationsMap.AddOperation(Request.Query["operationId"], opDetails);
+
+            // Dispatch LRO on a async Task
+            Task.Run(() =>
+            {
+                TestLROInternal(Request.Query["operationId"]);
+            });
+
+            // Async completion
+            return StatusCode(202, JsonConvert.SerializeObject(p1));
             // return StatusCode(401, "Hello from Sample Plugin: POST!" + p.X + p.Y);
         }
         #endregion
@@ -298,6 +309,12 @@ namespace SamplePlugin.Controllers
             var opDetails = new OperationDetails(createdTime, Microsoft.AzureBackup.DatasourcePlugin.Models.Response.KindEnum.BackupEnum);
             OperationsMap.AddOperation(Request.Query["operationId"], opDetails);
 
+            // Dispatch the backup to an async Task
+            Task.Run(() =>
+            {
+                BackupInternal(request, Request);
+            });
+
             // Backup is typically Long running, so Async completion (LRO Status=Running)
             var response = new Response()
             {
@@ -317,12 +334,6 @@ namespace SamplePlugin.Controllers
                     })
                 }
             };
-
-            // Dispatch the LRO to a Task
-            Task.Run(() =>
-            {
-                BackupInternal(request, Request);
-            });
 
             // 202 + response body
             return Accepted(response);
@@ -348,7 +359,7 @@ namespace SamplePlugin.Controllers
                         {
                             response = new Response()
                             {
-                                Id = Request.Headers["operationId"],
+                                Id = operationId,
                                 Kind = (Response.KindEnum?)kind,
                                 Status = (Response.StatusEnum?)status,
                                 StartTime = opDetails.StartTime,
@@ -372,7 +383,7 @@ namespace SamplePlugin.Controllers
                         {
                             response = new Response()
                             {
-                                Id = Request.Headers["operationId"],
+                                Id = operationId,
                                 Kind = (Response.KindEnum?)kind,
                                 Status = (Response.StatusEnum?)status,
                                 StartTime = opDetails.StartTime,
@@ -396,7 +407,7 @@ namespace SamplePlugin.Controllers
                         {
                             response = new Response()
                             {
-                                Id = Request.Headers["operationId"],
+                                Id = operationId,
                                 Kind = (Response.KindEnum?)kind,
                                 Status = (Response.StatusEnum?)status,
                                 StartTime = opDetails.StartTime,
@@ -421,7 +432,7 @@ namespace SamplePlugin.Controllers
                         {
                             response = new Response()
                             {
-                                Id = Request.Headers["operationId"],
+                                Id = operationId,
                                 Kind = (Response.KindEnum?)kind,
                                 Status = (Response.StatusEnum?)status,
                                 StartTime = opDetails.StartTime,
@@ -593,6 +604,17 @@ namespace SamplePlugin.Controllers
 
             return;
         }
+
+        /// <summary>
+        /// Test Internal method for async LRO
+        /// </summary>
+        private async void TestLROInternal(string operationId)
+        {
+            await Task.Delay(3 * 1000);
+            Console.WriteLine("Test LRO completed");
+            OperationsMap.UpdateOperation(operationId, DateTime.UtcNow);
+        }
+
         #endregion
     }
 }

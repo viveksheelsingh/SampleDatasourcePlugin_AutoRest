@@ -90,6 +90,7 @@ namespace SamplePlugin
             opDetails.PurgeTime = endTime.AddHours(gcOffsetInHours);
             opDetails.StatusCode = code;
             opDetails.OpError = error;
+            opDetails.Status = Response.StatusEnum.FailedEnum.ToString();
 
             // Set back in the map
             opMap[operationId] = opDetails;
@@ -104,6 +105,7 @@ namespace SamplePlugin
             OperationDetails opDetails = GetOperation(operationId);
             opDetails.EndTime = endTime;
             opDetails.PurgeTime = endTime.AddHours(gcOffsetInHours);
+            opDetails.Status = Response.StatusEnum.SucceededEnum.ToString();
 
             // Set back in the map
             opMap[operationId] = opDetails;
