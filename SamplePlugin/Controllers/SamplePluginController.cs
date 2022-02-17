@@ -13,14 +13,7 @@ namespace SamplePlugin.Controllers
     {
         private int gcOffsetInHours = 8; // Operations will be purged 8 hours after their completion
         private readonly ILogger<SamplePluginController> _logger;
-
-        /// <summary>
-        /// Plugin specific implementation for maintaning the operations collection.
-        /// This sample uses an in-memory dictionary. 
-        /// For more details, please refer to: https://msazure.visualstudio.com/One/_wiki/wikis/DppDocumentation/220542/Idempotency-and-crash-scenarios
-        /// </summary>
-        internal Dictionary<string, OperationDetails> OperationsMap = new Dictionary<string, OperationDetails>();
-
+        
         public SamplePluginController(ILogger<SamplePluginController> logger)
         {
             _logger = logger;
@@ -76,8 +69,8 @@ namespace SamplePlugin.Controllers
             var createdTime = DateTime.UtcNow;
             
             // Add to the Operations Map
-            var opDetails = CreateOperationDetails(createdTime, Microsoft.AzureBackup.DatasourcePlugin.Models.Response.KindEnum.ValidateForProtectionEnum);
-            AddToOperationsMap(Request.Query["operationId"], opDetails);
+            var opDetails = OperationDetails.CreateOperationDetails(createdTime, Microsoft.AzureBackup.DatasourcePlugin.Models.Response.KindEnum.ValidateForProtectionEnum);
+            OperationsMap.AddToOperationsMap(Request.Query["operationId"], opDetails);
 
             // Get the DS and DSSet details from request
             Datasource ds = request.Datasource;
@@ -323,7 +316,7 @@ namespace SamplePlugin.Controllers
             HttpStatusCode code = HttpStatusCode.OK;
 
             // Get the operation's details from the OperationsMap
-            OperationDetails opDetails = GetOperationDetails(operationId);
+            OperationDetails opDetails = OperationsMap.GetOperationDetails(operationId);
             Enum.TryParse(typeof(Response.StatusEnum), opDetails.Status, out var status);
             Enum.TryParse(typeof(Response.KindEnum), opDetails.OperationKind, out var kind);
             switch (status)
@@ -431,49 +424,6 @@ namespace SamplePlugin.Controllers
             return StatusCode((int)code, response);
         }
 
-        #endregion
-
-
-        #region Helpers
-
-        private OperationDetails CreateOperationDetails(DateTime createdTime, Response.KindEnum kind)
-        {
-
-            return new OperationDetails()
-            {
-                CreatedTime = createdTime,
-                EndTime = null,
-                PurgeTime = null,
-                OperationPayload = "custom plugin payload",
-                StartTime = createdTime,
-                Status = Microsoft.AzureBackup.DatasourcePlugin.Models.Response.StatusEnum.RunningEnum.ToString(),
-                OperationKind = kind.ToString(),
-                OpError = null,
-                StatusCode = null,
-            };
-        }
-        /// <summary>
-        /// Adds a new operation to the operations map.
-        /// </summary>
-        /// <param name="operationid"></param>
-        private void AddToOperationsMap(string operationid, OperationDetails opDetails)
-        {
-            OperationsMap.Add(operationid, opDetails);
-        }
-
-        /// <summary>
-        /// Get status of a given operation
-        /// </summary>
-        /// <param name="operationid"></param>
-        /// <returns></returns>
-        private OperationDetails GetOperationDetails(string operationid)
-        {
-            if (OperationsMap.TryGetValue(operationid, out var opDetails))
-            {
-                return opDetails;
-            }
-            else return null;
-        }
         #endregion
     }
 }
