@@ -1,22 +1,21 @@
-﻿/*+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+﻿/*/////////////////////////////////////////////////////////////////////////////////////////
  * Sample controller code.
  * Complete project available at: https://github.com/viveksheelsingh/SampleDatasourcePlugin
  * 
- -----------------------------------------------------------------------------------------*/
+ /////////////////////////////////////////////////////////////////////////////////////////*/
 
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AzureBackup.DatasourcePlugin.Models;
-using Microsoft.Extensions.Primitives;
 using Microsoft.Internal.AzureBackup.DataProtection.Common.Interface;
 using Microsoft.Internal.AzureBackup.DataProtection.Common.PitManager;
 using Microsoft.Internal.AzureBackup.DataProtection.PitManagerInterface;
+using Microsoft.Internal.CloudBackup.Common.Diag;
 using Newtonsoft.Json;
 using System.Net;
-using System.Net.Http;
-using System.Text;
 using Datasource = Microsoft.AzureBackup.DatasourcePlugin.Models.Datasource;
 using DatasourceSet = Microsoft.AzureBackup.DatasourcePlugin.Models.DatasourceSet;
 using Error = Microsoft.AzureBackup.DatasourcePlugin.Models.Error;
+using InnerError = Microsoft.AzureBackup.DatasourcePlugin.Models.InnerError;
 using PolicyInfo = Microsoft.Internal.AzureBackup.DataProtection.Common.Interface.PolicyInfo;
 
 namespace SamplePlugin.Controllers
@@ -27,6 +26,7 @@ namespace SamplePlugin.Controllers
     {
 
         private readonly ILogger<SamplePluginController> _logger;
+        private readonly string streamName = "testStream";
 
         public SamplePluginController(ILogger<SamplePluginController> logger)
         {
@@ -36,319 +36,361 @@ namespace SamplePlugin.Controllers
 
         #region Plugin Verb Controllers
 
+        /// <summary>
+        /// Controller for the ValidateForProtection verb
+        /// </summary>
+        /// <param name="request"></param>
+        /// <returns></returns>
         [HttpPost]
         [Route("/plugin:ValidateForProtection")]
         public IActionResult ValidateForProtection(ValidateForProtectionRequest request)
         {
             var createdTime = DateTime.UtcNow;
 
-            // Add to the Operations Map
-            var opDetails = new OperationDetails(createdTime, Microsoft.AzureBackup.DatasourcePlugin.Models.Response.KindEnum.ValidateForProtectionEnum);
-            OperationsMap.AddOperation(Request.Query["operationId"], opDetails);
-
-            // Get the DS and DSSet details from request
-            Datasource ds = request.Datasource;
-            DatasourceSet dsSet = request.DatasourceSet;
-
-            // Get the vault MSI token. 
-            string vaultMSIMgmtToken = request.DatasourceAccessToken.MgmtPlaneToken;
-            string vaultMSIDataplaneToken = request.DatasourceAccessToken.DataPlaneToken;
-
-            // Perform RBAC checks. Must check if the Vault MSI has the right RBAC setup on the datasource
-            // https://docs.microsoft.com/en-us/rest/api/authorization/permissions/list-for-resource
-
-
-            // Now do any validations on the datasource/datasourceSet (specific to each plugin):
-            // - Can this datasource be backed up using this policy ?
-            // - Is the datasource in a state where it can be backed up ? 
-            // - Are any other networking pre-requisites met for backup to succeed later ?
-            // - etc.
-            // 
-            // Use the vaultMSIMgmtToken as the authorizationHeader in an ARM call like: 
-            // GET https://management.azure.com/subscriptions/f75d8d8b-6735-4697-82e1-1a7a3ff0d5d4/resourceGroups/viveksipgtest/providers/Microsoft.DBforPostgreSQL/servers/viveksipgtest?api-version=2017-12-01 
-            // Use the vaultMSIDataplaneToken as the authorizationHeader in any dataplane calls like:
-            // GET https://testContainer.blob.core.windows.net/018a635f-f899-4344-9c19-b81f4455d900
-            //
-            // If your plugin does not rely on VaultMSI token for internal authN, use that.
-
-            // Success case - Syncronous completion (LRO reached terminal state - Status=Succeeded)
-            var response = new Response()
+            try
             {
-                Id = Request.Headers["operationId"],
-                Kind = Microsoft.AzureBackup.DatasourcePlugin.Models.Response.KindEnum.ValidateForProtectionEnum,
-                Status = Microsoft.AzureBackup.DatasourcePlugin.Models.Response.StatusEnum.SucceededEnum,
-                StartTime = createdTime,
-                CreatedTime = createdTime,
-                EndTime = DateTime.UtcNow,
-                PurgeTime = DateTime.UtcNow.AddHours(OperationsMap.gcOffsetInHours),
-                SucceededResponse = new ValidateForProtectionStatus()  // Success case, dont need to return anything.
-            };
-            OperationsMap.UpdateOperation(Request.Query["operationId"], DateTime.UtcNow);
+                // Copy over the request headers and query params.
+                Helper.CopyReqHeaderAndQueryParams(Request);
+                Helper.AddResponseHeaders(Request, Response);
 
-            // 202 + response body
-            return Accepted(JsonConvert.SerializeObject(response, Formatting.Indented));
+                // Add to the Operations Map
+                var opDetails = new OperationDetails(createdTime, Microsoft.AzureBackup.DatasourcePlugin.Models.Response.KindEnum.ValidateForProtectionEnum);
+                OperationsMap.AddOperation(Request.Query["operationId"], opDetails);
 
-            // Error case - similar response is to be created for other Verbs.
-            /* +++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+                // Get the DS and DSSet details from request
+                Datasource ds = request.Datasource;
+                DatasourceSet dsSet = request.DatasourceSet;
 
-            Error err = new Error()
-            {
-                Code = "erroCode",  // TODO: Give json error resource guidance
-                InnerError = new InnerError()
+                // Get the vault MSI token. 
+                string vaultMSIMgmtToken = request.DatasourceAccessToken.MgmtPlaneToken;
+                string vaultMSIDataplaneToken = request.DatasourceAccessToken.DataPlaneToken;
+
+                // Perform RBAC checks. Must check if the Vault MSI has the right RBAC setup on the datasource
+                // https://docs.microsoft.com/en-us/rest/api/authorization/permissions/list-for-resource
+
+
+                // Now do any validations on the datasource/datasourceSet (specific to each plugin):
+                // - Can this datasource be backed up using this policy ?
+                // - Is the datasource in a state where it can be backed up ? 
+                // - Are any other networking pre-requisites met for backup to succeed later ?
+                // - etc.
+                // 
+                // Use the vaultMSIMgmtToken as the authorizationHeader in an ARM call like: 
+                // GET https://management.azure.com/subscriptions/f75d8d8b-6735-4697-82e1-1a7a3ff0d5d4/resourceGroups/viveksipgtest/providers/Microsoft.DBforPostgreSQL/servers/viveksipgtest?api-version=2017-12-01 
+                // Use the vaultMSIDataplaneToken as the authorizationHeader in any dataplane calls like:
+                // GET https://testContainer.blob.core.windows.net/018a635f-f899-4344-9c19-b81f4455d900
+                //
+                // If your plugin does not rely on VaultMSI token for internal authN, use that.
+
+                // Success case - Syncronous completion (LRO reached terminal state - Status=Succeeded)
+                var response = new Response()
                 {
-                    Code = "innerErrorCode",  // This will be a code that comes from your source-dataplane
-                    AdditionalInfo = new Dictionary<string, string>()
-                            {
-                                // This message will also come from source data plane. Fill ths if you want to show this on the Portal.
-                                // e.g. https://msazure.visualstudio.com/One/_wiki/wikis/DppDocumentation/210788/Error-Modelling
-                                { "DetailedNonLocalisedMessage", "セッションはすでに存在します：StorageUnit6000C298-c804-c37e-9f9d-dc8ae1f5ef89_0にはまだ前のセッションがあります99892eb3bfbc4a718234f9be80676f06アクティブ" }
-                            }
-                },
-            };
+                    Id = Request.Query["operationId"],
+                    Kind = Microsoft.AzureBackup.DatasourcePlugin.Models.Response.KindEnum.ValidateForProtectionEnum,
+                    Status = Microsoft.AzureBackup.DatasourcePlugin.Models.Response.StatusEnum.SucceededEnum,
+                    StartTime = createdTime,
+                    CreatedTime = createdTime,
+                    EndTime = DateTime.UtcNow,
+                    PurgeTime = DateTime.UtcNow.AddHours(OperationsMap.gcOffsetInHours),
+                    SucceededResponse = new ValidateForProtectionStatus()  // Success case, dont need to return anything.
+                };
+                OperationsMap.UpdateOperation(Request.Query["operationId"], DateTime.UtcNow);
 
-            var errResponse = new Response()
+                // 202 + response body
+                return StatusCode((int)HttpStatusCode.Accepted, JsonConvert.SerializeObject(response, Formatting.Indented));
+            }
+
+            catch (Exception ex)
             {
-                Id = Request.Headers["operationId"],
-                Kind = Microsoft.AzureBackup.DatasourcePlugin.Models.Response.KindEnum.ValidateForProtectionEnum,
-                Status = Microsoft.AzureBackup.DatasourcePlugin.Models.Response.StatusEnum.FailedEnum,
-                StartTime = createdTime,
-                CreatedTime = createdTime,
-                EndTime = DateTime.UtcNow,
-                PurgeTime = DateTime.UtcNow.AddHours(OperationsMap.gcOffsetInHours),
-                SucceededResponse = new ValidateForProtectionStatus()
-                {
-                    Error = err,
-                },
-            };
-            OperationsMap.UpdateOperation(Request.Query["operationId"], DateTime.UtcNow, HttpStatusCode.InternalServerError, err);
-    
-
-            // 500 + response body
-            return StatusCode((int)HttpStatusCode.InternalServerError, JsonConvert.SerializeObject(errResponse, Formatting.Indented));
-
-            ----------------------------------------------------------------*/
+                return StatusCode((int)HttpStatusCode.InternalServerError, JsonConvert.SerializeObject(Helper.FormErrorResponse(ex, createdTime, Microsoft.AzureBackup.DatasourcePlugin.Models.Response.KindEnum.ValidateForProtectionEnum), Formatting.Indented)); 
+            }
 
         }
 
-
+        /// <summary>
+        /// Controller for the StartProtection verb
+        /// </summary>
+        /// <param name="request"></param>
+        /// <returns></returns>
         [HttpPost]
         [Route("/plugin:StartProtection")]
         public IActionResult StartProtection(StartProtectionRequest request)
         {
             var createdTime = DateTime.UtcNow;
 
-            // Add to the Operations Map
-            var opDetails = new OperationDetails(createdTime, Microsoft.AzureBackup.DatasourcePlugin.Models.Response.KindEnum.StartProtectionEnum);
-            OperationsMap.AddOperation(Request.Query["operationId"], opDetails);
-
-            // Repeat the same checks as done in ValidateForProtection.
-            // If your source dataplane owns part of the schedules, please seek Help: https://msazure.visualstudio.com/One/_wiki/wikis/DppDocumentation/210451/Getting-Help
-
-            // Perform any operations on your source dataplane here. 
-            // e.g. Does your resource reqires toggling some property called: EnabledForBackup ? Set it now
-
-
-            // Success case - Syncronous completion (LRO reached terminal state - Status=Succeeded)
-            var response = new Response()
+            try
             {
-                Id = Request.Headers["operationId"],
-                Kind = Microsoft.AzureBackup.DatasourcePlugin.Models.Response.KindEnum.StartProtectionEnum,
-                Status = Microsoft.AzureBackup.DatasourcePlugin.Models.Response.StatusEnum.SucceededEnum,
-                StartTime = createdTime,
-                CreatedTime = createdTime,
-                EndTime = DateTime.UtcNow,
-                PurgeTime = DateTime.UtcNow.AddHours(OperationsMap.gcOffsetInHours),
-                SucceededResponse = new StartProtectionStatus()  // Success case, dont need to return anything.
-            };
-            OperationsMap.UpdateOperation(Request.Query["operationId"], DateTime.UtcNow);
+                // Add to the Operations Map
+                var opDetails = new OperationDetails(createdTime, Microsoft.AzureBackup.DatasourcePlugin.Models.Response.KindEnum.StartProtectionEnum);
+                OperationsMap.AddOperation(Request.Query["operationId"], opDetails);
 
-            // 202 + response body
-            return Accepted(JsonConvert.SerializeObject(response, Formatting.Indented));
+                // Repeat the same checks as done in ValidateForProtection.
+                // If your source dataplane owns part of the schedules, please seek Help: https://msazure.visualstudio.com/One/_wiki/wikis/DppDocumentation/210451/Getting-Help
+
+                // Perform any operations on your source dataplane here. 
+                // e.g. Does your resource reqires toggling some property called: EnabledForBackup ? Set it now
+
+
+                // Success case - Syncronous completion (LRO reached terminal state - Status=Succeeded)
+                var response = new Response()
+                {
+                    Id = Request.Query["operationId"],
+                    Kind = Microsoft.AzureBackup.DatasourcePlugin.Models.Response.KindEnum.StartProtectionEnum,
+                    Status = Microsoft.AzureBackup.DatasourcePlugin.Models.Response.StatusEnum.SucceededEnum,
+                    StartTime = createdTime,
+                    CreatedTime = createdTime,
+                    EndTime = DateTime.UtcNow,
+                    PurgeTime = DateTime.UtcNow.AddHours(OperationsMap.gcOffsetInHours),
+                    SucceededResponse = new StartProtectionStatus()  // Success case, dont need to return anything.
+                };
+                OperationsMap.UpdateOperation(Request.Query["operationId"], DateTime.UtcNow);
+
+                // 202 + response body
+                return StatusCode((int)HttpStatusCode.Accepted, JsonConvert.SerializeObject(response, Formatting.Indented));
+            }
+            catch (Exception ex)
+            {
+                return StatusCode((int)HttpStatusCode.InternalServerError, JsonConvert.SerializeObject(Helper.FormErrorResponse(ex, createdTime, Microsoft.AzureBackup.DatasourcePlugin.Models.Response.KindEnum.StartProtectionEnum), Formatting.Indented));
+            }
+
         }
 
+        /// <summary>
+        /// Controller for the StopProtection verb
+        /// </summary>
+        /// <param name="request"></param>
+        /// <returns></returns>
         [HttpPost]
         [Route("/plugin:StopProtection")]
         public IActionResult StopProtection(StopProtectionRequest request)
         {
             var createdTime = DateTime.UtcNow;
 
-            // Add to the Operations Map
-            var opDetails = new OperationDetails(createdTime, Microsoft.AzureBackup.DatasourcePlugin.Models.Response.KindEnum.StopProtectionEnum);
-            OperationsMap.AddOperation(Request.Query["operationId"], opDetails);
-
-
-            // Clear any state you toggled in StartProtection
-            // e.g. Does your resource reqires toggling some property called: EnabledForBackup ? Unset it now 
-            // If your source dataplane owns part of the schedules, please seek Help: https://msazure.visualstudio.com/One/_wiki/wikis/DppDocumentation/210451/Getting-Help
-
-            // Success case - Syncronous completion (LRO reached terminal state - Status=Succeeded)
-            var response = new Response()
+            try
             {
-                Id = Request.Headers["operationId"],
-                Kind = Microsoft.AzureBackup.DatasourcePlugin.Models.Response.KindEnum.StopProtectionEnum,
-                Status = Microsoft.AzureBackup.DatasourcePlugin.Models.Response.StatusEnum.SucceededEnum,
-                StartTime = createdTime,
-                CreatedTime = createdTime,
-                EndTime = DateTime.UtcNow,
-                PurgeTime = DateTime.UtcNow.AddHours(OperationsMap.gcOffsetInHours),
-                SucceededResponse = new StopProtectionStatus() // Success case, dont need to return anything.
-            };
-            OperationsMap.UpdateOperation(Request.Query["operationId"], DateTime.UtcNow);
+                // Add to the Operations Map
+                var opDetails = new OperationDetails(createdTime, Microsoft.AzureBackup.DatasourcePlugin.Models.Response.KindEnum.StopProtectionEnum);
+                OperationsMap.AddOperation(Request.Query["operationId"], opDetails);
 
-            // 202 + response body
-            return Accepted(JsonConvert.SerializeObject(response, Formatting.Indented));
+
+                // Clear any state you toggled in StartProtection
+                // e.g. Does your resource reqires toggling some property called: EnabledForBackup ? Unset it now 
+                // If your source dataplane owns part of the schedules, please seek Help: https://msazure.visualstudio.com/One/_wiki/wikis/DppDocumentation/210451/Getting-Help
+
+                // Success case - Syncronous completion (LRO reached terminal state - Status=Succeeded)
+                var response = new Response()
+                {
+                    Id = Request.Query["operationId"],
+                    Kind = Microsoft.AzureBackup.DatasourcePlugin.Models.Response.KindEnum.StopProtectionEnum,
+                    Status = Microsoft.AzureBackup.DatasourcePlugin.Models.Response.StatusEnum.SucceededEnum,
+                    StartTime = createdTime,
+                    CreatedTime = createdTime,
+                    EndTime = DateTime.UtcNow,
+                    PurgeTime = DateTime.UtcNow.AddHours(OperationsMap.gcOffsetInHours),
+                    SucceededResponse = new StopProtectionStatus() // Success case, dont need to return anything.
+                };
+                OperationsMap.UpdateOperation(Request.Query["operationId"], DateTime.UtcNow);
+
+                // 202 + response body
+                return StatusCode((int)HttpStatusCode.Accepted, JsonConvert.SerializeObject(response, Formatting.Indented));
+            }
+            catch (Exception ex)
+            {
+                return StatusCode((int)HttpStatusCode.InternalServerError, JsonConvert.SerializeObject(Helper.FormErrorResponse(ex, createdTime, Microsoft.AzureBackup.DatasourcePlugin.Models.Response.KindEnum.StopProtectionEnum), Formatting.Indented));
+            }
         }
 
+        /// <summary>
+        /// Controller for the ValidateForBackup verb
+        /// </summary>
+        /// <param name="request"></param>
+        /// <returns></returns>
         [HttpPost]
         [Route("/plugin:ValidateForBackup")]
         public IActionResult ValidateForBackup(ValidateForBackupRequest request)
         {
             var createdTime = DateTime.UtcNow;
 
-            // Add to the Operations Map
-            var opDetails = new OperationDetails(createdTime, Microsoft.AzureBackup.DatasourcePlugin.Models.Response.KindEnum.StopProtectionEnum);
-            OperationsMap.AddOperation(Request.Query["operationId"], opDetails);
-
-            // Get the DS and DSSet details from request
-            Datasource ds = request.Datasource;
-            DatasourceSet dsSet = request.DatasourceSet;
-
-            // Get the vault MSI token. 
-            string vaultMSIMgmtToken = request.DatasourceAccessToken.MgmtPlaneToken;
-            string vaultMSIDataplaneToken = request.DatasourceAccessToken.DataPlaneToken;
-
-            // Perform RBAC checks. Must check if the Vault MSI has the right RBAC setup on the datasource
-            // https://docs.microsoft.com/en-us/rest/api/authorization/permissions/list-for-resource
-
-
-            // Now do any validations on the datasource/datasourceSet (specific to each plugin):
-            // - Can this datasource be backed up using this policy ?
-            // - Is the datasource in a state where it can be backed up ? 
-            // - Are any other networking pre-requisites met for backup to succeed ?
-            // - etc.
-            //
-            // Use the vaultMSIMgmtToken as the authorizationHeader in an ARM call like: 
-            // GET https://management.azure.com/subscriptions/f75d8d8b-6735-4697-82e1-1a7a3ff0d5d4/resourceGroups/viveksipgtest/providers/Microsoft.DBforPostgreSQL/servers/viveksipgtest?api-version=2017-12-01 
-            // Use the vaultMSIDataplaneToken as the authorizationHeader in any dataplane calls like:
-            // GET https://testContainer.blob.core.windows.net/018a635f-f899-4344-9c19-b81f4455d900
-            //
-            // If your plugin does not rely on VaultMSI token for internal authN, use that.
-
-            // Success case - Syncronous completion (LRO reached terminal state - Status=Succeeded)
-            var response = new Response()
+            try
             {
-                Id = Request.Headers["operationId"],
-                Kind = Microsoft.AzureBackup.DatasourcePlugin.Models.Response.KindEnum.ValidateForBackupEnum,
-                Status = Microsoft.AzureBackup.DatasourcePlugin.Models.Response.StatusEnum.SucceededEnum,
-                StartTime = createdTime,
-                CreatedTime = createdTime,
-                EndTime = DateTime.UtcNow,
-                PurgeTime = DateTime.UtcNow.AddHours(OperationsMap.gcOffsetInHours),
-                SucceededResponse = new ValidateForBackupStatus()   // Success case, return  loopback context if required. Plugin specific.
-                {
-                    LoopBackContext = JsonConvert.SerializeObject(new LoopBackMetadata()
-                    {
-                        Foo = "foo",
-                        Bar = "bar",
-                    })
-                }
-            };
-            OperationsMap.UpdateOperation(Request.Query["operationId"], DateTime.UtcNow);
+                // Add to the Operations Map
+                var opDetails = new OperationDetails(createdTime, Microsoft.AzureBackup.DatasourcePlugin.Models.Response.KindEnum.StopProtectionEnum);
+                OperationsMap.AddOperation(Request.Query["operationId"], opDetails);
 
-            // 202 + response body
-            return Accepted(JsonConvert.SerializeObject(response, Formatting.Indented));
+                // Get the DS and DSSet details from request
+                Datasource ds = request.Datasource;
+                DatasourceSet dsSet = request.DatasourceSet;
+
+                // Get the vault MSI token. 
+                string vaultMSIMgmtToken = request.DatasourceAccessToken.MgmtPlaneToken;
+                string vaultMSIDataplaneToken = request.DatasourceAccessToken.DataPlaneToken;
+
+                // Perform RBAC checks. Must check if the Vault MSI has the right RBAC setup on the datasource
+                // https://docs.microsoft.com/en-us/rest/api/authorization/permissions/list-for-resource
+
+
+                // Now do any validations on the datasource/datasourceSet (specific to each plugin):
+                // - Can this datasource be backed up using this policy ?
+                // - Is the datasource in a state where it can be backed up ? 
+                // - Are any other networking pre-requisites met for backup to succeed ?
+                // - etc.
+                //
+                // Use the vaultMSIMgmtToken as the authorizationHeader in an ARM call like: 
+                // GET https://management.azure.com/subscriptions/f75d8d8b-6735-4697-82e1-1a7a3ff0d5d4/resourceGroups/viveksipgtest/providers/Microsoft.DBforPostgreSQL/servers/viveksipgtest?api-version=2017-12-01 
+                // Use the vaultMSIDataplaneToken as the authorizationHeader in any dataplane calls like:
+                // GET https://testContainer.blob.core.windows.net/018a635f-f899-4344-9c19-b81f4455d900
+                //
+                // If your plugin does not rely on VaultMSI token for internal authN, use that.
+
+                // Success case - Syncronous completion (LRO reached terminal state - Status=Succeeded)
+                var response = new Response()
+                {
+                    Id = Request.Query["operationId"],
+                    Kind = Microsoft.AzureBackup.DatasourcePlugin.Models.Response.KindEnum.ValidateForBackupEnum,
+                    Status = Microsoft.AzureBackup.DatasourcePlugin.Models.Response.StatusEnum.SucceededEnum,
+                    StartTime = createdTime,
+                    CreatedTime = createdTime,
+                    EndTime = DateTime.UtcNow,
+                    PurgeTime = DateTime.UtcNow.AddHours(OperationsMap.gcOffsetInHours),
+                    SucceededResponse = new ValidateForBackupStatus()   // Success case, return  loopback context if required. Plugin specific.
+                    {
+                        LoopBackContext = JsonConvert.SerializeObject(new LoopBackMetadata()
+                        {
+                            Foo = "foo",
+                            Bar = "bar",
+                        })
+                    }
+                };
+                OperationsMap.UpdateOperation(Request.Query["operationId"], DateTime.UtcNow);
+
+                // 202 + response body
+                return StatusCode((int)HttpStatusCode.Accepted, JsonConvert.SerializeObject(response, Formatting.Indented));
+            }
+            catch (Exception ex)
+            {
+                return StatusCode((int)HttpStatusCode.InternalServerError, JsonConvert.SerializeObject(Helper.FormErrorResponse(ex, createdTime, Microsoft.AzureBackup.DatasourcePlugin.Models.Response.KindEnum.StopProtectionEnum), Formatting.Indented));
+            }
         }
 
+        /// <summary>
+        /// Controller for the Backup verb
+        /// </summary>
+        /// <param name="request"></param>
+        /// <returns></returns>
         [HttpPost]
         [Route("/plugin:Backup")]
         public IActionResult Backup(BackupRequest request)
         {
             var createdTime = DateTime.UtcNow;
 
-            // Add to the Operations Map
-            var opDetails = new OperationDetails(createdTime, Microsoft.AzureBackup.DatasourcePlugin.Models.Response.KindEnum.BackupEnum);
-            OperationsMap.AddOperation(Request.Query["operationId"], opDetails);
-
-            // Copy over the request headers and query params.
-            CopyReqHeaderAndQueryParams(Request, out var headers, out var qparams);
-
-            // Dispatch the backup to an async Task
-            Task.Run(() =>
+            try
             {
-                BackupInternal(request, headers, qparams);
-            });
+                // Add to the Operations Map
+                var opDetails = new OperationDetails(createdTime, Microsoft.AzureBackup.DatasourcePlugin.Models.Response.KindEnum.BackupEnum);
+                OperationsMap.AddOperation(Request.Query["operationId"], opDetails);
 
-            // Backup is typically Long running, so Async completion (LRO Status=Running)
-            // The async Task will get completed later, and its terminal status will be available via the Poll GET.
-            var response = new Response()
-            {
-                Id = Request.Headers["operationId"],
-                Kind = (Response.KindEnum?)Enum.Parse(typeof(Response.KindEnum), opDetails.OperationKind),
-                Status = (Response.StatusEnum?)Enum.Parse(typeof(Response.StatusEnum), opDetails.Status),
-                StartTime = opDetails.StartTime,
-                CreatedTime = opDetails.CreatedTime,
-                EndTime = opDetails.EndTime,
-                PurgeTime = opDetails.PurgeTime,
-                RunningResponse = new BackupStatus() // Running case, return  loopback context if required. Plugin specific.
+                // Copy over the request headers and query params.
+                Helper.CopyReqHeaderAndQueryParams(Request);
+
+                // Dispatch the backup to an async Task
+                Task.Run(() =>
                 {
-                    LoopBackContext = JsonConvert.SerializeObject(new LoopBackMetadata()
-                    {
-                        Foo = "foo",
-                        Bar = "bar",
-                    })
-                }
-            };
+                    BackupInternal(request);
+                });
 
-            // 202 + response body
-            return Accepted(JsonConvert.SerializeObject(response, Formatting.Indented));
+                // Backup is typically Long running, so Async completion (LRO Status=Running)
+                // The async Task will get completed later, and its terminal status will be available via the Poll GET.
+                var response = new Response()
+                {
+                    Id = Request.Query["operationId"],
+                    Kind = (Response.KindEnum?)Enum.Parse(typeof(Response.KindEnum), opDetails.OperationKind),
+                    Status = (Response.StatusEnum?)Enum.Parse(typeof(Response.StatusEnum), opDetails.Status),
+                    StartTime = opDetails.StartTime,
+                    CreatedTime = opDetails.CreatedTime,
+                    EndTime = opDetails.EndTime,
+                    PurgeTime = opDetails.PurgeTime,
+                    RunningResponse = new BackupStatus() // Running case, return  loopback context if required. Plugin specific.
+                    {
+                        LoopBackContext = JsonConvert.SerializeObject(new LoopBackMetadata()
+                        {
+                            Foo = "foo",
+                            Bar = "bar",
+                        })
+                    }
+                };
+
+                // 202 + response body
+                return StatusCode((int)HttpStatusCode.Accepted, JsonConvert.SerializeObject(response, Formatting.Indented));
+            }
+            catch (Exception ex)
+            {
+                return StatusCode((int)HttpStatusCode.InternalServerError, JsonConvert.SerializeObject(Helper.FormErrorResponse(ex, createdTime, Microsoft.AzureBackup.DatasourcePlugin.Models.Response.KindEnum.BackupEnum), Formatting.Indented));
+            }
 
         }
 
+        /// <summary>
+        /// Controller for the Restore verb
+        /// </summary>
+        /// <param name="request"></param>
+        /// <returns></returns>
         [HttpPost]
         [Route("/plugin:Restore")]
         public IActionResult Restore(RestoreRequest request)
         {
             var createdTime = DateTime.UtcNow;
 
-            // Add to the Operations Map
-            var opDetails = new OperationDetails(createdTime, Microsoft.AzureBackup.DatasourcePlugin.Models.Response.KindEnum.RestoreEnum);
-            OperationsMap.AddOperation(Request.Query["operationId"], opDetails);
-
-            // Copy over the request headers and query params.
-            CopyReqHeaderAndQueryParams(Request, out var headers, out var qparams);
-
-            // Dispatch the backup to an async Task
-            Task.Run(() =>
+            try
             {
-                RestoreInternal(request, headers, qparams);
-            });
+                // Add to the Operations Map
+                var opDetails = new OperationDetails(createdTime, Microsoft.AzureBackup.DatasourcePlugin.Models.Response.KindEnum.RestoreEnum);
+                OperationsMap.AddOperation(Request.Query["operationId"], opDetails);
 
-            // Backup is typically Long running, so Async completion (LRO Status=Running)
-            // The async Task will get completed later, and its terminal status will be available via the Poll GET.
-            var response = new Response()
-            {
-                Id = Request.Headers["operationId"],
-                Kind = (Response.KindEnum?)Enum.Parse(typeof(Response.KindEnum), opDetails.OperationKind),
-                Status = (Response.StatusEnum?)Enum.Parse(typeof(Response.StatusEnum), opDetails.Status),
-                StartTime = opDetails.StartTime,
-                CreatedTime = opDetails.CreatedTime,
-                EndTime = opDetails.EndTime,
-                PurgeTime = opDetails.PurgeTime,
-                RunningResponse = new BackupStatus() // Running case, return  loopback context if required. Plugin specific.
+                // Copy over the request headers and query params.
+                Helper.CopyReqHeaderAndQueryParams(Request);
+
+                // Dispatch the restore to an async Task
+                Task.Run(() =>
                 {
-                    LoopBackContext = JsonConvert.SerializeObject(new LoopBackMetadata()
-                    {
-                        Foo = "foo",
-                        Bar = "bar",
-                    })
-                }
-            };
+                    RestoreInternal(request);
+                });
 
-            // 202 + response body
-            return Accepted(JsonConvert.SerializeObject(response, Formatting.Indented));
+                // Restore is typically Long running, so Async completion (LRO Status=Running)
+                // The async Task will get completed later, and its terminal status will be available via the Poll GET.
+                var response = new Response()
+                {
+                    Id = Request.Query["operationId"],
+                    Kind = (Response.KindEnum?)Enum.Parse(typeof(Response.KindEnum), opDetails.OperationKind),
+                    Status = (Response.StatusEnum?)Enum.Parse(typeof(Response.StatusEnum), opDetails.Status),
+                    StartTime = opDetails.StartTime,
+                    CreatedTime = opDetails.CreatedTime,
+                    EndTime = opDetails.EndTime,
+                    PurgeTime = opDetails.PurgeTime,
+                    RunningResponse = new RestoreStatus() // Running case, return  loopback context if required. Plugin specific.
+                    {
+                        LoopBackContext = JsonConvert.SerializeObject(new LoopBackMetadata()
+                        {
+                            Foo = "foo",
+                            Bar = "bar",
+                        }),
+                    }
+                };
+
+                // 202 + response body
+                return StatusCode((int)HttpStatusCode.Accepted, JsonConvert.SerializeObject(response, Formatting.Indented));
+            }
+            catch (Exception ex)
+            {
+                return StatusCode((int)HttpStatusCode.InternalServerError, JsonConvert.SerializeObject(Helper.FormErrorResponse(ex, createdTime, Microsoft.AzureBackup.DatasourcePlugin.Models.Response.KindEnum.RestoreEnum), Formatting.Indented));
+            }
 
         }
 
+        /// <summary>
+        /// Controller for polling:  GET https://pluginBaseUrl/operations/{operationId}
+        /// </summary>
+        /// <param name="operationId"></param>
+        /// <returns></returns>
         [HttpGet]
         [Route("/operations/{operationId}")]
         public IActionResult GetOperationStatus(string operationId)
@@ -511,8 +553,9 @@ namespace SamplePlugin.Controllers
         /// <param name="request"></param>
         /// <param name="headers"></param>
         /// <param name="qparams"></param>
-        private async void BackupInternal(BackupRequest request, Dictionary<string, string> headers, Dictionary<string, string> qparams)
+        private async void BackupInternal(BackupRequest request)
         {
+            await Task.Delay(10 * 1000);
             // Get the DS and DSSet details from request
             Datasource ds = request.Datasource;
             DatasourceSet dsSet = request.DatasourceSet;
@@ -545,7 +588,17 @@ namespace SamplePlugin.Controllers
             await backupStream.ReadAsync(buffer, 0, MockSourceDataplane.maxReadSize);
 
             // Get PitMgr
-            IPitManager pitMgr = PitManagerFactory.Instance.GetPitManager(request.RPCatalogInitializeParams, request.DatastoreInitializeParams);
+            // Need to pass the headers to PitMgr so that the same can propogate to DPP-Target dataplane
+            DiagContextServiceInfo diagCtx = new DiagContextServiceInfo()
+            {
+                SubscriptionId = new Guid(Helper.headers["subscriptionid"]),
+                ResourceId = Helper.headers["resourceid"],
+                TaskId = Helper.headers["resourceid"],
+                RequestId = Helper.headers["x-ms-correlation-request-id"]
+            };
+
+            IPitManager pitMgr = PitManagerFactory.Instance.GetPitManager(request.RPCatalogInitializeParams, 
+                request.DatastoreInitializeParams, logger: _logger, diagContext: diagCtx);
 
             // Create Pit.
             IPit pit = pitMgr.CreatePit(request.RPCatalogInitializeParams[VaultAndStoreInitializationParamsKeys.RecoveryPointId],
@@ -560,7 +613,7 @@ namespace SamplePlugin.Controllers
             pitWriter.AddStorageUnit("TestStorageUnit", 1);
 
             // Create and write to the stream.
-            using (PassthroughStream targetStream = pitWriter.CreateStream("testStream"))
+            using (PassthroughStream targetStream = pitWriter.CreateStream(streamName))
             {
                 Stream srcStream = MockSourceDataplane.DoBackup();
                 byte[] bytes = new byte[MockSourceDataplane.maxReadSize];
@@ -590,13 +643,14 @@ namespace SamplePlugin.Controllers
 
             // commit.
             pit.Commit();
+            pitWriter.CleanupStorageUnits();
 
-            _logger.LogInformation($"{headers["x-ms-correlation-request-id"]}  {headers["subscriptionid"]} Committed the Pit...",
-              headers["x-ms-correlation-request-id"],
-              headers["subscriptionid"]);
+            _logger.LogInformation($"{Helper.headers["x-ms-correlation-request-id"]}  {Helper.headers["subscriptionid"]} Committed the Pit...",
+                  Helper.headers["x-ms-correlation-request-id"],
+                  Helper.headers["subscriptionid"]);
 
             // Update the operation
-            OperationsMap.UpdateOperation(qparams["operationId"], DateTime.UtcNow);
+            OperationsMap.UpdateOperation(Helper.qparams["operationId"], DateTime.UtcNow);
 
             return;
         }
@@ -607,7 +661,7 @@ namespace SamplePlugin.Controllers
         /// <param name="request"></param>
         /// <param name="headers"></param>
         /// <param name="qparams"></param>
-        private async void RestoreInternal(RestoreRequest request, Dictionary<string, string> headers, Dictionary<string, string> qparams)
+        private async void RestoreInternal(RestoreRequest request)
         {
             // Get the source and target DS and DSSet details from request
             Datasource srcds = request.SourceDatasource;
@@ -628,8 +682,18 @@ namespace SamplePlugin.Controllers
             }
 
             // Get PitMgr
-            IPitManager pitMgr = PitManagerFactory.Instance.GetPitManager(request.RPCatalogInitializeParams, request.DatastoreInitializeParams);
+            // Need to pass the headers to PitMgr so that the same can propogate to DPP-Target dataplane
+            DiagContextServiceInfo diagCtx = new DiagContextServiceInfo()
+            {
+                SubscriptionId = new Guid(Helper.headers["subscriptionid"]),
+                ResourceId = Helper.headers["resourceid"],
+                TaskId = Helper.headers["resourceid"],
+                RequestId = Helper.headers["x-ms-correlation-request-id"]
+            };
 
+            IPitManager pitMgr = PitManagerFactory.Instance.GetPitManager(request.RPCatalogInitializeParams,
+                request.DatastoreInitializeParams, logger: _logger, diagContext: diagCtx);
+          
             // open the pit in vault
             IPit committedPit = pitMgr.GetPit(request.RestoreToRPId);
            
@@ -645,7 +709,7 @@ namespace SamplePlugin.Controllers
             
                 foreach (var stream in streamInfo.Item2)
                 {
-                    // Get the stream
+                    // Get the stream - in this case, we created ONE stream named: "testStream"
                     using (PassthroughStream ptStream = pitReader.OpenStream(stream, _logger, index))
                     {
                         // Now call the Restore API of your source dataplane (specific to each plugin):
@@ -660,21 +724,22 @@ namespace SamplePlugin.Controllers
                         // Assuming you get a handle to a stream at this point form your native Restore API. 
                         // Using MockSourceDataplane here for illustration - this takes the stream directly.
                         MockSourceDataplane.DoRestore(ptStream);
-                        _logger.LogInformation($"{headers["x-ms-correlation-request-id"]}  {headers["subscriptionid"]} Completed restore...",
-                              headers["x-ms-correlation-request-id"],
-                              headers["subscriptionid"]);
 
                         // if the Restore API of your workload needs a buffer, use something like:
                         //byte[] buffer = new byte[MockSourceDataplane.maxReadSize];
                         //int bytesRead = ptStream.Read(buffer, 0, buffer.Length);
                         //string outputStr = Encoding.ASCII.GetString(buffer);
+
+                        _logger.LogInformation($"{Helper.headers["x-ms-correlation-request-id"]}  {Helper.headers["subscriptionid"]} Completed restore...",
+                              Helper.headers["x-ms-correlation-request-id"],
+                              Helper.headers["subscriptionid"]);
                     }
                 }
             }
             pitReader.CleanupStorageUnits();
 
             // Update the operation
-            OperationsMap.UpdateOperation(qparams["operationId"], DateTime.UtcNow);
+            OperationsMap.UpdateOperation(Helper.qparams["operationId"], DateTime.UtcNow);
 
             return;
         }
@@ -683,29 +748,15 @@ namespace SamplePlugin.Controllers
         /// <summary>
         /// Test Internal method for async LRO
         /// </summary>
-        private async void TestLROInternal(Dictionary<string, string> headers, Dictionary<string, string> qparams)
+        private async void TestLROInternal()
         {
             await Task.Delay(4 * 1000);
 
-            _logger.LogInformation($"{headers["x-ms-correlation-request-id"]}  {headers["subscriptionid"]} Test LRO completed...",
-                headers["x-ms-correlation-request-id"],
-                headers["subscriptionid"]);
+            _logger.LogInformation($"{Helper.headers["x-ms-correlation-request-id"]}  {Helper.headers["subscriptionid"]} Test LRO completed...",
+                Helper.headers["x-ms-correlation-request-id"],
+                Helper.headers["subscriptionid"]);
 
-            OperationsMap.UpdateOperation(qparams["operationId"], DateTime.UtcNow);
-        }
-
-        private void CopyReqHeaderAndQueryParams(HttpRequest Request, out Dictionary<string, string> headers, out Dictionary<string, string> qparams)
-        {
-            headers = new Dictionary<string, string>();
-            qparams = new Dictionary<string, string>();
-            foreach (var h in Request.Headers)
-            {
-                headers[h.Key] = h.Value;
-            }
-            foreach (var q in Request.Query)
-            {
-                qparams[q.Key] = q.Value;
-            }
+            OperationsMap.UpdateOperation(Helper.qparams["operationId"], DateTime.UtcNow);
         }
 
         #endregion
@@ -746,50 +797,58 @@ namespace SamplePlugin.Controllers
         public IActionResult TestPost(TestPayload p)
         {
             var createdTime = DateTime.UtcNow;
-            _logger.LogInformation($"{Request.Headers["x-ms-correlation-request-id"]}  {Request.Headers["subscriptionid"]} Starting TestPost:  {createdTime}",
-                Request.Headers["x-ms-correlation-request-id"],
-                Request.Headers["subscriptionid"],
-                createdTime);
 
-            TestPayload p1 = new TestPayload()
+            try
             {
-                X = p.X + 1,
-                Y = p.Y + 1,
-            };
+                _logger.LogInformation($"{Request.Headers["x-ms-correlation-request-id"]}  {Request.Headers["subscriptionid"]} Starting TestPost:  {createdTime}",
+                    Request.Headers["x-ms-correlation-request-id"],
+                    Request.Headers["subscriptionid"],
+                    createdTime);
 
-            // Add to the Operations Map
-            var opDetails = new OperationDetails(DateTime.UtcNow, Microsoft.AzureBackup.DatasourcePlugin.Models.Response.KindEnum.BackupEnum);
-            OperationsMap.AddOperation(Request.Query["operationId"], opDetails);
-
-            // Copy over the request headers and query params.
-            CopyReqHeaderAndQueryParams(Request, out var headers, out var qparams);
-
-            // Dispatch LRO on a async Task
-            Task.Run(() =>
-            {
-                TestLROInternal(headers, qparams);
-            });
-
-            // Async completion - send Running response now.
-            // The async Task will get completed later, and its terminal status will be available via the Poll GET.
-            var response = new Response()
-            {
-                Id = Request.Query["operationId"],
-                Kind = Microsoft.AzureBackup.DatasourcePlugin.Models.Response.KindEnum.BackupEnum,
-                Status = Microsoft.AzureBackup.DatasourcePlugin.Models.Response.StatusEnum.RunningEnum,
-                StartTime = createdTime,
-                CreatedTime = createdTime,
-                EndTime = null,
-                PurgeTime = null,
-                RunningResponse = new BackupStatus() // Running case, return LoopBack ctx
+                TestPayload p1 = new TestPayload()
                 {
-                    LoopBackContext = JsonConvert.SerializeObject(p1),
-                },
-            };
+                    X = p.X + 1,
+                    Y = p.Y + 1,
+                };
 
-            Response.Headers.Add("x-ms-request-id", Request.Headers["x-ms-correlation-request-id"]);
-            return StatusCode(202, JsonConvert.SerializeObject(response, Formatting.Indented));
-            // return StatusCode(401, "Hello from Sample Plugin: POST!" + p.X + p.Y);
+                // Add to the Operations Map
+                var opDetails = new OperationDetails(DateTime.UtcNow, Microsoft.AzureBackup.DatasourcePlugin.Models.Response.KindEnum.BackupEnum);
+                OperationsMap.AddOperation(Request.Query["operationId"], opDetails);
+
+                // Copy over the request headers and query params.
+                Helper.CopyReqHeaderAndQueryParams(Request);
+
+                // Dispatch LRO on a async Task
+                Task.Run(() =>
+                {
+                    TestLROInternal();
+                });
+
+                // Async completion - send Running response now.
+                // The async Task will get completed later, and its terminal status will be available via the Poll GET.
+                var response = new Response()
+                {
+                    Id = Request.Query["operationId"],
+                    Kind = Microsoft.AzureBackup.DatasourcePlugin.Models.Response.KindEnum.BackupEnum,
+                    Status = Microsoft.AzureBackup.DatasourcePlugin.Models.Response.StatusEnum.RunningEnum,
+                    StartTime = createdTime,
+                    CreatedTime = createdTime,
+                    EndTime = null,
+                    PurgeTime = null,
+                    RunningResponse = new BackupStatus() // Running case, return LoopBack ctx
+                    {
+                        LoopBackContext = JsonConvert.SerializeObject(p1),
+                    },
+                };
+
+                Response.Headers.Add("x-ms-request-id", Request.Headers["x-ms-correlation-request-id"]);
+                return StatusCode((int)HttpStatusCode.Accepted, JsonConvert.SerializeObject(response, Formatting.Indented));
+            }
+            catch (Exception ex)
+            {
+
+                return StatusCode((int)HttpStatusCode.InternalServerError, JsonConvert.SerializeObject(Helper.FormErrorResponse(ex, createdTime, Microsoft.AzureBackup.DatasourcePlugin.Models.Response.KindEnum.ValidateForProtectionEnum), Formatting.Indented));
+            }
         }
         #endregion
     }
