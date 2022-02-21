@@ -1,9 +1,23 @@
-﻿using Microsoft.AspNetCore.Mvc;
+﻿/*+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+ * Sample controller code.
+ * Complete project available at: https://github.com/viveksheelsingh/SampleDatasourcePlugin
+ * 
+ -----------------------------------------------------------------------------------------*/
+
+using Microsoft.AspNetCore.Mvc;
 using Microsoft.AzureBackup.DatasourcePlugin.Models;
 using Microsoft.Extensions.Primitives;
+using Microsoft.Internal.AzureBackup.DataProtection.Common.Interface;
+using Microsoft.Internal.AzureBackup.DataProtection.Common.PitManager;
+using Microsoft.Internal.AzureBackup.DataProtection.PitManagerInterface;
 using Newtonsoft.Json;
 using System.Net;
 using System.Net.Http;
+using System.Text;
+using Datasource = Microsoft.AzureBackup.DatasourcePlugin.Models.Datasource;
+using DatasourceSet = Microsoft.AzureBackup.DatasourcePlugin.Models.DatasourceSet;
+using Error = Microsoft.AzureBackup.DatasourcePlugin.Models.Error;
+using PolicyInfo = Microsoft.Internal.AzureBackup.DataProtection.Common.Interface.PolicyInfo;
 
 namespace SamplePlugin.Controllers
 {
@@ -19,77 +33,6 @@ namespace SamplePlugin.Controllers
             _logger = logger;
         }
 
-        #region TestController
-        /// <summary>
-        /// Test Controller functionality
-        /// </summary>
-        public class TestPayload
-        {
-            public int X { get; set; }
-            public int Y { get; set; }
-            public TestPayload()
-            {
-                X = 0;
-                Y = 0;
-            }
-        }
-        /// <summary>
-        /// Test Controller functionality: GET
-        /// </summary>
-        /// <returns></returns>
-        [HttpGet]
-        [Route("/plugin:TestGet")]
-        public IActionResult TestGet()
-        {
-            return Ok("Hello from Sample Plugin: GET !");
-        }
-
-        /// <summary>
-        /// Test Controller functionality: POST
-        /// </summary>
-        /// <param name="p"></param>
-        /// <returns></returns>
-        [HttpPost]
-        [Route("/plugin:TestPost")]
-
-        public IActionResult TestPost(TestPayload p)
-        {
-            var createdTime = DateTime.UtcNow;
-            TestPayload p1 = new TestPayload()
-            {
-                X = p.X + 1,
-                Y = p.Y + 1,
-            };
-
-            // Add to the Operations Map
-            var opDetails = new OperationDetails(DateTime.UtcNow, Microsoft.AzureBackup.DatasourcePlugin.Models.Response.KindEnum.BackupEnum);
-            OperationsMap.AddOperation(Request.Query["operationId"], opDetails);
-
-            // Dispatch LRO on a async Task
-            Task.Run(() =>
-            {
-                TestLROInternal(Request.Query["operationId"]);
-            });
-
-            // Async completion
-            var response = new Response()
-            {
-                Id = Request.Query["operationId"],
-                Kind = Microsoft.AzureBackup.DatasourcePlugin.Models.Response.KindEnum.BackupEnum,
-                Status = Microsoft.AzureBackup.DatasourcePlugin.Models.Response.StatusEnum.RunningEnum,
-                StartTime = createdTime,
-                CreatedTime = createdTime,
-                EndTime = null,
-                PurgeTime = null,
-                SucceededResponse = new BackupStatus() // Success case, dont need to return anything.
-                {
-                    LoopBackContext = "testLoopbackCtx",
-                },
-            };
-            return StatusCode(202, response);
-            // return StatusCode(401, "Hello from Sample Plugin: POST!" + p.X + p.Y);
-        }
-        #endregion
 
         #region Plugin Verb Controllers
 
@@ -138,15 +81,16 @@ namespace SamplePlugin.Controllers
                 CreatedTime = createdTime,
                 EndTime = DateTime.UtcNow,
                 PurgeTime = DateTime.UtcNow.AddHours(OperationsMap.gcOffsetInHours),
-                SucceededResponse = new ValidateForProtectionStatus() // Success case, dont need to return anything.
+                SucceededResponse = new ValidateForProtectionStatus()  // Success case, dont need to return anything.
             };
             OperationsMap.UpdateOperation(Request.Query["operationId"], DateTime.UtcNow);
 
             // 202 + response body
-            return Accepted(response);
+            return Accepted(JsonConvert.SerializeObject(response, Formatting.Indented));
 
             // Error case - similar response is to be created for other Verbs.
-            /*
+            /* +++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
             Error err = new Error()
             {
                 Code = "erroCode",  // TODO: Give json error resource guidance
@@ -180,8 +124,9 @@ namespace SamplePlugin.Controllers
     
 
             // 500 + response body
-            return StatusCode((int)HttpStatusCode.InternalServerError, errResponse);
-            */
+            return StatusCode((int)HttpStatusCode.InternalServerError, JsonConvert.SerializeObject(errResponse, Formatting.Indented));
+
+            ----------------------------------------------------------------*/
 
         }
 
@@ -218,7 +163,7 @@ namespace SamplePlugin.Controllers
             OperationsMap.UpdateOperation(Request.Query["operationId"], DateTime.UtcNow);
 
             // 202 + response body
-            return Accepted(response);
+            return Accepted(JsonConvert.SerializeObject(response, Formatting.Indented));
         }
 
         [HttpPost]
@@ -251,7 +196,7 @@ namespace SamplePlugin.Controllers
             OperationsMap.UpdateOperation(Request.Query["operationId"], DateTime.UtcNow);
 
             // 202 + response body
-            return Accepted(response);
+            return Accepted(JsonConvert.SerializeObject(response, Formatting.Indented));
         }
 
         [HttpPost]
@@ -311,7 +256,7 @@ namespace SamplePlugin.Controllers
             OperationsMap.UpdateOperation(Request.Query["operationId"], DateTime.UtcNow);
 
             // 202 + response body
-            return Accepted(response);
+            return Accepted(JsonConvert.SerializeObject(response, Formatting.Indented));
         }
 
         [HttpPost]
@@ -324,13 +269,17 @@ namespace SamplePlugin.Controllers
             var opDetails = new OperationDetails(createdTime, Microsoft.AzureBackup.DatasourcePlugin.Models.Response.KindEnum.BackupEnum);
             OperationsMap.AddOperation(Request.Query["operationId"], opDetails);
 
+            // Copy over the request headers and query params.
+            CopyReqHeaderAndQueryParams(Request, out var headers, out var qparams);
+
             // Dispatch the backup to an async Task
             Task.Run(() =>
             {
-                BackupInternal(request, Request);
+                BackupInternal(request, headers, qparams);
             });
 
             // Backup is typically Long running, so Async completion (LRO Status=Running)
+            // The async Task will get completed later, and its terminal status will be available via the Poll GET.
             var response = new Response()
             {
                 Id = Request.Headers["operationId"],
@@ -351,7 +300,52 @@ namespace SamplePlugin.Controllers
             };
 
             // 202 + response body
-            return Accepted(response);
+            return Accepted(JsonConvert.SerializeObject(response, Formatting.Indented));
+
+        }
+
+        [HttpPost]
+        [Route("/plugin:Restore")]
+        public IActionResult Restore(RestoreRequest request)
+        {
+            var createdTime = DateTime.UtcNow;
+
+            // Add to the Operations Map
+            var opDetails = new OperationDetails(createdTime, Microsoft.AzureBackup.DatasourcePlugin.Models.Response.KindEnum.RestoreEnum);
+            OperationsMap.AddOperation(Request.Query["operationId"], opDetails);
+
+            // Copy over the request headers and query params.
+            CopyReqHeaderAndQueryParams(Request, out var headers, out var qparams);
+
+            // Dispatch the backup to an async Task
+            Task.Run(() =>
+            {
+                RestoreInternal(request, headers, qparams);
+            });
+
+            // Backup is typically Long running, so Async completion (LRO Status=Running)
+            // The async Task will get completed later, and its terminal status will be available via the Poll GET.
+            var response = new Response()
+            {
+                Id = Request.Headers["operationId"],
+                Kind = (Response.KindEnum?)Enum.Parse(typeof(Response.KindEnum), opDetails.OperationKind),
+                Status = (Response.StatusEnum?)Enum.Parse(typeof(Response.StatusEnum), opDetails.Status),
+                StartTime = opDetails.StartTime,
+                CreatedTime = opDetails.CreatedTime,
+                EndTime = opDetails.EndTime,
+                PurgeTime = opDetails.PurgeTime,
+                RunningResponse = new BackupStatus() // Running case, return  loopback context if required. Plugin specific.
+                {
+                    LoopBackContext = JsonConvert.SerializeObject(new LoopBackMetadata()
+                    {
+                        Foo = "foo",
+                        Bar = "bar",
+                    })
+                }
+            };
+
+            // 202 + response body
+            return Accepted(JsonConvert.SerializeObject(response, Formatting.Indented));
 
         }
 
@@ -361,6 +355,11 @@ namespace SamplePlugin.Controllers
         {
             Response response = null;
             HttpStatusCode code = HttpStatusCode.OK;
+
+            _logger.LogInformation($"{Request.Headers["x-ms-correlation-request-id"]}  {Request.Headers["subscriptionid"]}   GET operationId:{operationId} ",
+               Request.Headers["x-ms-correlation-request-id"],
+               Request.Headers["subscriptionid"],
+               operationId);
 
             // Get the operation's details from the OperationsMap
             OperationDetails opDetails = OperationsMap.GetOperation(operationId);
@@ -380,7 +379,7 @@ namespace SamplePlugin.Controllers
                                 StartTime = opDetails.StartTime,
                                 CreatedTime = opDetails.CreatedTime,
                                 EndTime = opDetails.EndTime,
-                                PurgeTime = opDetails.EndTime,
+                                PurgeTime = opDetails.PurgeTime,
                                 SucceededResponse = new BackupStatus() // Succeeded case, return  loopback context if required. Plugin specific.
                                 {
                                     LoopBackContext = JsonConvert.SerializeObject(new LoopBackMetadata()
@@ -404,7 +403,7 @@ namespace SamplePlugin.Controllers
                                 StartTime = opDetails.StartTime,
                                 CreatedTime = opDetails.CreatedTime,
                                 EndTime = opDetails.EndTime,
-                                PurgeTime = opDetails.EndTime,
+                                PurgeTime = opDetails.PurgeTime,
                                 RunningResponse = new BackupStatus() // Running case, return  loopback context if required. Plugin specific.
                                 {
                                     LoopBackContext = JsonConvert.SerializeObject(new LoopBackMetadata()
@@ -428,7 +427,7 @@ namespace SamplePlugin.Controllers
                                 StartTime = opDetails.StartTime,
                                 CreatedTime = opDetails.CreatedTime,
                                 EndTime = opDetails.EndTime,
-                                PurgeTime = opDetails.EndTime,
+                                PurgeTime = opDetails.PurgeTime,
                                 FailedResponse = new BackupStatus() // Failed case, return  loopback context if required. Plugin specific. Add error
                                 {
                                     Error = opDetails.OpError,
@@ -453,7 +452,7 @@ namespace SamplePlugin.Controllers
                                 StartTime = opDetails.StartTime,
                                 CreatedTime = opDetails.CreatedTime,
                                 EndTime = opDetails.EndTime,
-                                PurgeTime = opDetails.EndTime,
+                                PurgeTime = opDetails.PurgeTime,
                                 CancelledResponse = new BackupStatus() // Cancelled case, return  loopback context if required. Plugin specific. Add error
                                 {
                                     Error = opDetails.OpError,
@@ -496,15 +495,23 @@ namespace SamplePlugin.Controllers
                 };
             }
 
+            Response.Headers.Add("x-ms-request-id", Request.Headers["x-ms-correlation-request-id"]);
+
             // One of the httpStatusCodes set on the Operations + response body
-            return StatusCode((int)code, response);
+            return StatusCode((int)code, JsonConvert.SerializeObject(response, Formatting.Indented));
 
         }
 
         #endregion
 
         #region InternalMethods
-        private async void BackupInternal(BackupRequest request, HttpRequest httpRequest)
+        /// <summary>
+        /// Internal long running backup method
+        /// </summary>
+        /// <param name="request"></param>
+        /// <param name="headers"></param>
+        /// <param name="qparams"></param>
+        private async void BackupInternal(BackupRequest request, Dictionary<string, string> headers, Dictionary<string, string> qparams)
         {
             // Get the DS and DSSet details from request
             Datasource ds = request.Datasource;
@@ -517,6 +524,10 @@ namespace SamplePlugin.Controllers
             // Get the LoopbackContext from ValidateForBackup phase.
             // Its use is plugin specific.
             string loopBackCtx = request.LoopBackContext;
+            if (!string.IsNullOrEmpty(loopBackCtx))
+            {
+                LoopBackMetadata loopbkMetadata = JsonConvert.DeserializeObject<LoopBackMetadata>(loopBackCtx);
+            }
 
             // Now call the Backup API of your source dataplane (specific to each plugin):
             //
@@ -533,14 +544,11 @@ namespace SamplePlugin.Controllers
             byte[] buffer = new byte[MockSourceDataplane.maxReadSize];
             await backupStream.ReadAsync(buffer, 0, MockSourceDataplane.maxReadSize);
 
-            // TBD: Add Pitmgr code here
-            /*
-              // Get PitMgr
-            IPitManager pitMgr = PitManagerFactory.Instance.GetPitManager(PluginTestHelper.GetClientLibParams(customerData, store: false, isBvtd: true),
-                PluginTestHelper.GetClientLibParams(customerData, store: true, isBvtd: true));
+            // Get PitMgr
+            IPitManager pitMgr = PitManagerFactory.Instance.GetPitManager(request.RPCatalogInitializeParams, request.DatastoreInitializeParams);
 
             // Create Pit.
-            IPit pit = pitMgr.CreatePit(PluginTestHelper.GetClientLibParams(customerData)[VaultAndStoreInitializationParamsKeys.RecoveryPointId],
+            IPit pit = pitMgr.CreatePit(request.RPCatalogInitializeParams[VaultAndStoreInitializationParamsKeys.RecoveryPointId],
                 PitFormatType.AzureStorageBlockBlobUnseekableStream,
                 BackupType.Full);
 
@@ -552,13 +560,14 @@ namespace SamplePlugin.Controllers
             pitWriter.AddStorageUnit("TestStorageUnit", 1);
 
             // Create and write to the stream.
-            using (PassthroughStream stream = pitWriter.CreateStream("testStream"))
+            using (PassthroughStream targetStream = pitWriter.CreateStream("testStream"))
             {
-                bytes = Encoding.ASCII.GetBytes(inputStr);
-                stream.Write(bytes, 0, bytes.Length);
+                Stream srcStream = MockSourceDataplane.DoBackup();
+                byte[] bytes = new byte[MockSourceDataplane.maxReadSize];
+                int bytesRead = srcStream.Read(bytes, 0, MockSourceDataplane.maxReadSize);
+                targetStream.Write(bytes, 0, bytesRead);
             }
 
-            
             // Set tags, policyInfo and metadata
             pit.TagInfo = new RetentionTagInfo()
             {
@@ -570,66 +579,218 @@ namespace SamplePlugin.Controllers
                 PolicyName = "testPolicy",
                 PolicyVersion = "v1"
             };
-            pit.PluginMetadata = "testMetadata";
+            pit.PluginMetadata = JsonConvert.SerializeObject(
+                new PluginMetadata()
+                {
+                    Foo =   "Foo",
+                    Bar = "Bar",
+                }); 
+
             pit.EndTime = DateTimeOffset.UtcNow;
 
             // commit.
             pit.Commit();
-            
-            //
-            // =========== Recovery ============
-            //
 
-            // open the pit in vault
-            IPit committedPit = pitMgr.GetPit(pit.PitId);
-            Assert.IsTrue(committedPit.PitState == RecoveryPointState.COMMITTED);
-            Assert.IsTrue(committedPit.PluginMetadata == committedPit.PluginMetadata);
-            Console.WriteLine("pit state :" + committedPit.PitState);
-            Assert.IsTrue(committedPit.PolicyInfo.PolicyName.Equals("testPolicy", StringComparison.InvariantCultureIgnoreCase) && committedPit.PolicyInfo.PolicyVersion.Equals("v1", StringComparison.InvariantCultureIgnoreCase));
-            committedPit.InitializePitFormatReader();
-
-            StreamPitFormatReader pitReader = committedPit.PitFormatReader as StreamPitFormatReader;
-
-
-            foreach (var streamInfo in pitReader.StreamInfo)
-            {
-                int index = 0;
-                PitManagerLoggerExtensions.Log(logger).LogInformation($"StorageUnit: {streamInfo.Item1} , Stream Count:{streamInfo.Item2.Count}");
-
-                foreach (var stream in streamInfo.Item2)
-                {
-                    using (PassthroughStream ptStream = pitReader.OpenStream(stream, logger, index))
-                    {
-                        bytes = new byte[inputStr.Length];
-                        int bytesRead = ptStream.Read(bytes, 0, bytes.Length);
-                        string outputStr = Encoding.ASCII.GetString(bytes);
-
-                        // Assert
-                        Assert.IsTrue(ptStream.Length == bytes.Length, "Stream size not the same as input");
-                        Assert.IsTrue(string.Equals(inputStr, outputStr, StringComparison.InvariantCulture), "Input string not equal to output string");
-                    }
-
-                }
-            }
-            pitReader.CleanupStorageUnits();
-             */
+            _logger.LogInformation($"{headers["x-ms-correlation-request-id"]}  {headers["subscriptionid"]} Committed the Pit...",
+              headers["x-ms-correlation-request-id"],
+              headers["subscriptionid"]);
 
             // Update the operation
-            OperationsMap.UpdateOperation(httpRequest.Query["operationId"], DateTime.UtcNow);
+            OperationsMap.UpdateOperation(qparams["operationId"], DateTime.UtcNow);
 
             return;
         }
 
         /// <summary>
-        /// Test Internal method for async LRO
+        /// Internal long running Restore method.
         /// </summary>
-        private async void TestLROInternal(string operationId)
+        /// <param name="request"></param>
+        /// <param name="headers"></param>
+        /// <param name="qparams"></param>
+        private async void RestoreInternal(RestoreRequest request, Dictionary<string, string> headers, Dictionary<string, string> qparams)
         {
-            await Task.Delay(4 * 1000);
-            Console.WriteLine("Test LRO completed");
-            OperationsMap.UpdateOperation(operationId, DateTime.UtcNow);
+            // Get the source and target DS and DSSet details from request
+            Datasource srcds = request.SourceDatasource;
+            DatasourceSet srcDsSet = request.SourceDatasourceSet;
+            Datasource tgtds = request.TargetDatasource;
+            DatasourceSet tgtDsSet = request.TargetDatasourceSet;
+
+            // Get the vault MSI token. 
+            string vaultMSIMgmtToken = request.DatasourceAccessToken.MgmtPlaneToken;
+            string vaultMSIDataplaneToken = request.DatasourceAccessToken.DataPlaneToken;
+
+            // Get the LoopbackContext from ValidateForRestore phase.
+            // Its use is plugin specific.
+            string loopBackCtx = request.LoopBackContext;
+            if (!string.IsNullOrEmpty(loopBackCtx))
+            {
+                LoopBackMetadata loopbkMetadata = JsonConvert.DeserializeObject<LoopBackMetadata>(loopBackCtx);
+            }
+
+            // Get PitMgr
+            IPitManager pitMgr = PitManagerFactory.Instance.GetPitManager(request.RPCatalogInitializeParams, request.DatastoreInitializeParams);
+
+            // open the pit in vault
+            IPit committedPit = pitMgr.GetPit(request.RestoreToRPId);
+           
+            // Initialize the PitReader
+            committedPit.InitializePitFormatReader();
+
+            StreamPitFormatReader pitReader = committedPit.PitFormatReader as StreamPitFormatReader;
+
+            // Assuming you wrote multiple streams - general case.
+            foreach (var streamInfo in pitReader.StreamInfo)
+            {
+                int index = 0;
+            
+                foreach (var stream in streamInfo.Item2)
+                {
+                    // Get the stream
+                    using (PassthroughStream ptStream = pitReader.OpenStream(stream, _logger, index))
+                    {
+                        // Now call the Restore API of your source dataplane (specific to each plugin):
+                        //
+                        // e.g. call some API in ARM: Use the vaultMSIMgmtToken as the authorizationHeader in an ARM call like: 
+                        // POST https://management.azure.com/subscriptions/f75d8d8b-6735-4697-82e1-1a7a3ff0d5d4/resourceGroups/viveksipgtest/providers/Microsoft.DBforPostgreSQL/servers/viveksipgtest/Restore?api-version=2017-12-01 
+                        // Use the vaultMSIDataplaneToken as the authorizationHeader in any dataplane calls like:
+                        // POST https://testContainer.blob.core.windows.net/018a635f-f899-4344-9c19-b81f4455d900/Restore  etc...
+                        //
+                        // If your plugin does not rely on VaultMSI token for internal authN, use that.
+
+                        // Assuming you get a handle to a stream at this point form your native Restore API. 
+                        // Using MockSourceDataplane here for illustration - this takes the stream directly.
+                        MockSourceDataplane.DoRestore(ptStream);
+                        _logger.LogInformation($"{headers["x-ms-correlation-request-id"]}  {headers["subscriptionid"]} Completed restore...",
+                              headers["x-ms-correlation-request-id"],
+                              headers["subscriptionid"]);
+
+                        // if the Restore API of your workload needs a buffer, use something like:
+                        //byte[] buffer = new byte[MockSourceDataplane.maxReadSize];
+                        //int bytesRead = ptStream.Read(buffer, 0, buffer.Length);
+                        //string outputStr = Encoding.ASCII.GetString(buffer);
+                    }
+                }
+            }
+            pitReader.CleanupStorageUnits();
+
+            // Update the operation
+            OperationsMap.UpdateOperation(qparams["operationId"], DateTime.UtcNow);
+
+            return;
         }
 
+
+        /// <summary>
+        /// Test Internal method for async LRO
+        /// </summary>
+        private async void TestLROInternal(Dictionary<string, string> headers, Dictionary<string, string> qparams)
+        {
+            await Task.Delay(4 * 1000);
+
+            _logger.LogInformation($"{headers["x-ms-correlation-request-id"]}  {headers["subscriptionid"]} Test LRO completed...",
+                headers["x-ms-correlation-request-id"],
+                headers["subscriptionid"]);
+
+            OperationsMap.UpdateOperation(qparams["operationId"], DateTime.UtcNow);
+        }
+
+        private void CopyReqHeaderAndQueryParams(HttpRequest Request, out Dictionary<string, string> headers, out Dictionary<string, string> qparams)
+        {
+            headers = new Dictionary<string, string>();
+            qparams = new Dictionary<string, string>();
+            foreach (var h in Request.Headers)
+            {
+                headers[h.Key] = h.Value;
+            }
+            foreach (var q in Request.Query)
+            {
+                qparams[q.Key] = q.Value;
+            }
+        }
+
+        #endregion
+
+        #region TestController
+        /// <summary>
+        /// Test Controller functionality
+        /// </summary>
+        public class TestPayload
+        {
+            public int X { get; set; }
+            public int Y { get; set; }
+            public TestPayload()
+            {
+                X = 0;
+                Y = 0;
+            }
+        }
+        /// <summary>
+        /// Test Controller functionality: GET
+        /// </summary>
+        /// <returns></returns>
+        [HttpGet]
+        [Route("/plugin:TestGet")]
+        public IActionResult TestGet()
+        {
+            return Ok("Hello from Sample Plugin: GET !");
+        }
+
+        /// <summary>
+        /// Test Controller functionality: POST
+        /// </summary>
+        /// <param name="p"></param>
+        /// <returns></returns>
+        [HttpPost]
+        [Route("/plugin:TestPost")]
+
+        public IActionResult TestPost(TestPayload p)
+        {
+            var createdTime = DateTime.UtcNow;
+            _logger.LogInformation($"{Request.Headers["x-ms-correlation-request-id"]}  {Request.Headers["subscriptionid"]} Starting TestPost:  {createdTime}",
+                Request.Headers["x-ms-correlation-request-id"],
+                Request.Headers["subscriptionid"],
+                createdTime);
+
+            TestPayload p1 = new TestPayload()
+            {
+                X = p.X + 1,
+                Y = p.Y + 1,
+            };
+
+            // Add to the Operations Map
+            var opDetails = new OperationDetails(DateTime.UtcNow, Microsoft.AzureBackup.DatasourcePlugin.Models.Response.KindEnum.BackupEnum);
+            OperationsMap.AddOperation(Request.Query["operationId"], opDetails);
+
+            // Copy over the request headers and query params.
+            CopyReqHeaderAndQueryParams(Request, out var headers, out var qparams);
+
+            // Dispatch LRO on a async Task
+            Task.Run(() =>
+            {
+                TestLROInternal(headers, qparams);
+            });
+
+            // Async completion - send Running response now.
+            // The async Task will get completed later, and its terminal status will be available via the Poll GET.
+            var response = new Response()
+            {
+                Id = Request.Query["operationId"],
+                Kind = Microsoft.AzureBackup.DatasourcePlugin.Models.Response.KindEnum.BackupEnum,
+                Status = Microsoft.AzureBackup.DatasourcePlugin.Models.Response.StatusEnum.RunningEnum,
+                StartTime = createdTime,
+                CreatedTime = createdTime,
+                EndTime = null,
+                PurgeTime = null,
+                RunningResponse = new BackupStatus() // Running case, return LoopBack ctx
+                {
+                    LoopBackContext = JsonConvert.SerializeObject(p1),
+                },
+            };
+
+            Response.Headers.Add("x-ms-request-id", Request.Headers["x-ms-correlation-request-id"]);
+            return StatusCode(202, JsonConvert.SerializeObject(response, Formatting.Indented));
+            // return StatusCode(401, "Hello from Sample Plugin: POST!" + p.X + p.Y);
+        }
         #endregion
     }
 }

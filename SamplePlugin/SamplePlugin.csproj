@@ -8,6 +8,7 @@
 
   <ItemGroup>
     <PackageReference Include="IDSPluginSDK" Version="1.0.0" />
+    <PackageReference Include="Mgmt.RecoverySvcs.DppPitManager.ClientLibrary" Version="1.0.177-releasesavsplugin" />
     <PackageReference Include="Swashbuckle.AspNetCore" Version="6.2.3" />
   </ItemGroup>
 

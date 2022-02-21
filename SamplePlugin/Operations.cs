@@ -13,6 +13,16 @@ namespace SamplePlugin
         public string ErrorCode { get; set; }
     }
 
+    internal class PluginMetadata
+    {
+        /// <summary>
+        /// e.g. a plugin might want to store the src-dataplane version 
+        /// e.g. SQL engine version.
+        /// </summary>
+        public string Foo { get; set; }
+        public string Bar { get; set; }
+    }
+
     /// <summary>
     /// Plugin specific implementation for maintaning the operations collection
     /// </summary>
