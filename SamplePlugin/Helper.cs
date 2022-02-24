@@ -2,7 +2,6 @@
 using Microsoft.AzureBackup.DatasourcePlugin.Models;
 using Newtonsoft.Json;
 using System.Net;
-using static Microsoft.AzureBackup.DatasourcePlugin.Models.Response;
 
 namespace SamplePlugin
 {
@@ -27,7 +26,7 @@ namespace SamplePlugin
             response.Headers.Add("x-ms-request-id", request.Headers["x-ms-correlation-request-id"]);
         }
 
-        public static Response FormErrorResponse(Exception ex, DateTime createdTime, KindEnum kind)
+        public static Response FormErrorResponse(Exception ex, DateTimeOffset createdTime, OperationType kind)
         {
             Error err = new Error()
             {
@@ -37,22 +36,18 @@ namespace SamplePlugin
                 InnerError = new InnerError()
                 {
                     Code = "innerErrorCode",  // This will be a code that comes from your source-dataplane
-                    AdditionalInfo = new Dictionary<string, string>()
+                    /*AdditionalInfo = new Dictionary<string, string>()
                         {
                             // This message will also come from source data plane. Fill ths if you want to show this on the Portal.
                             // e.g. https://msazure.visualstudio.com/One/_wiki/wikis/DppDocumentation/210788/Error-Modelling
                             { "DetailedNonLocalisedMessage", "セッションはすでに存在します：StorageUnit6000C298-c804-c37e-9f9d-dc8ae1f5ef89_0にはまだ前のセッションがあります99892eb3bfbc4a718234f9be80676f06アクティブ" }
-                        }
+                        }*/
                 },
             };
 
-            var errResponse = new Response()
+            var errResponse = new Response(qparams["operationId"], kind, ExecutionStatus.Failed, createdTime)
             {
-                Id = qparams["operationId"],
-                Kind = kind,
-                Status = StatusEnum.FailedEnum,
                 StartTime = createdTime,
-                CreatedTime = createdTime,
                 EndTime = DateTime.UtcNow,
                 PurgeTime = DateTime.UtcNow.AddHours(OperationsMap.gcOffsetInHours),
                 FailedResponse = FormFailedStatus(kind, err),
@@ -62,11 +57,32 @@ namespace SamplePlugin
             return errResponse;
         }
 
-        private static BaseStatus FormFailedStatus(KindEnum kind, Error err)
+        private static BaseStatus FormFailedStatus(OperationType kind, Error err)
         {
+            if (kind == OperationType.ValidateForProtection)
+            {
+                return new ValidateForProtectionStatus()
+                {
+                    Error = err,
+                };
+            }
+                   
+
+            // other cases for other verbs...
+            // case Kind.StartProtectionEnum: 
+            // etc.
+            else
+            {
+                return new BaseStatus()
+                {
+                    Error = err
+                };
+            }
+
+            /*
             switch (kind)
             {
-                case KindEnum.ValidateForProtectionEnum:
+                case OperationType.ValidateForProtection:
                     {
                         return new ValidateForProtectionStatus()
                         {
@@ -76,7 +92,7 @@ namespace SamplePlugin
                     break;
 
                 // other cases for other verbs...
-                // case KindEnum.StartProtectionEnum: 
+                // case Kind.StartProtectionEnum: 
                 // etc.
 
                 default:
@@ -87,6 +103,7 @@ namespace SamplePlugin
                         };
                     }
             }
+            */
         }
     }
 }

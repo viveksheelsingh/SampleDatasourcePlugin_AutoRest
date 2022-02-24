@@ -12,9 +12,11 @@ using Microsoft.Internal.AzureBackup.DataProtection.PitManagerInterface;
 using Microsoft.Internal.CloudBackup.Common.Diag;
 using Newtonsoft.Json;
 using System.Net;
+using System.Text;
 using Datasource = Microsoft.AzureBackup.DatasourcePlugin.Models.Datasource;
 using DatasourceSet = Microsoft.AzureBackup.DatasourcePlugin.Models.DatasourceSet;
 using Error = Microsoft.AzureBackup.DatasourcePlugin.Models.Error;
+using ExecutionStatus = Microsoft.AzureBackup.DatasourcePlugin.Models.ExecutionStatus;
 using InnerError = Microsoft.AzureBackup.DatasourcePlugin.Models.InnerError;
 using PolicyInfo = Microsoft.Internal.AzureBackup.DataProtection.Common.Interface.PolicyInfo;
 
@@ -45,7 +47,7 @@ namespace SamplePlugin.Controllers
         [Route("/plugin:ValidateForProtection")]
         public IActionResult ValidateForProtection(ValidateForProtectionRequest request)
         {
-            var createdTime = DateTime.UtcNow;
+            var createdTime = DateTimeOffset.UtcNow;
 
             try
             {
@@ -54,7 +56,7 @@ namespace SamplePlugin.Controllers
                 Helper.AddResponseHeaders(Request, Response);
 
                 // Add to the Operations Map
-                var opDetails = new OperationDetails(createdTime, Microsoft.AzureBackup.DatasourcePlugin.Models.Response.KindEnum.ValidateForProtectionEnum);
+                var opDetails = new OperationDetails(createdTime, OperationType.ValidateForProtection);
                 OperationsMap.AddOperation(Request.Query["operationId"], opDetails);
 
                 // Get the DS and DSSet details from request
@@ -83,18 +85,14 @@ namespace SamplePlugin.Controllers
                 // If your plugin does not rely on VaultMSI token for internal authN, use that.
 
                 // Success case - Syncronous completion (LRO reached terminal state - Status=Succeeded)
-                var response = new Response()
+                var response = new Response(Request.Query["operationId"], OperationType.ValidateForProtection, ExecutionStatus.Succeeded, createdTime)
                 {
-                    Id = Request.Query["operationId"],
-                    Kind = Microsoft.AzureBackup.DatasourcePlugin.Models.Response.KindEnum.ValidateForProtectionEnum,
-                    Status = Microsoft.AzureBackup.DatasourcePlugin.Models.Response.StatusEnum.SucceededEnum,
                     StartTime = createdTime,
-                    CreatedTime = createdTime,
-                    EndTime = DateTime.UtcNow,
-                    PurgeTime = DateTime.UtcNow.AddHours(OperationsMap.gcOffsetInHours),
+                    EndTime = DateTimeOffset.UtcNow,
+                    PurgeTime = DateTimeOffset.UtcNow.AddHours(OperationsMap.gcOffsetInHours),
                     SucceededResponse = new ValidateForProtectionStatus()  // Success case, dont need to return anything.
                 };
-                OperationsMap.UpdateOperation(Request.Query["operationId"], DateTime.UtcNow);
+                OperationsMap.UpdateOperation(Request.Query["operationId"], DateTimeOffset.UtcNow);
 
                 // 202 + response body
                 return StatusCode((int)HttpStatusCode.Accepted, JsonConvert.SerializeObject(response, Formatting.Indented));
@@ -102,7 +100,7 @@ namespace SamplePlugin.Controllers
 
             catch (Exception ex)
             {
-                return StatusCode((int)HttpStatusCode.InternalServerError, JsonConvert.SerializeObject(Helper.FormErrorResponse(ex, createdTime, Microsoft.AzureBackup.DatasourcePlugin.Models.Response.KindEnum.ValidateForProtectionEnum), Formatting.Indented)); 
+                return StatusCode((int)HttpStatusCode.InternalServerError, JsonConvert.SerializeObject(Helper.FormErrorResponse(ex, createdTime, OperationType.ValidateForProtection), Formatting.Indented)); 
             }
 
         }
@@ -116,12 +114,12 @@ namespace SamplePlugin.Controllers
         [Route("/plugin:StartProtection")]
         public IActionResult StartProtection(StartProtectionRequest request)
         {
-            var createdTime = DateTime.UtcNow;
+            var createdTime = DateTimeOffset.UtcNow;
 
             try
             {
                 // Add to the Operations Map
-                var opDetails = new OperationDetails(createdTime, Microsoft.AzureBackup.DatasourcePlugin.Models.Response.KindEnum.StartProtectionEnum);
+                var opDetails = new OperationDetails(createdTime, OperationType.StartProtection);
                 OperationsMap.AddOperation(Request.Query["operationId"], opDetails);
 
                 // Repeat the same checks as done in ValidateForProtection.
@@ -132,25 +130,21 @@ namespace SamplePlugin.Controllers
 
 
                 // Success case - Syncronous completion (LRO reached terminal state - Status=Succeeded)
-                var response = new Response()
+                var response = new Response(Request.Query["operationId"], OperationType.StartProtection, ExecutionStatus.Succeeded, createdTime)
                 {
-                    Id = Request.Query["operationId"],
-                    Kind = Microsoft.AzureBackup.DatasourcePlugin.Models.Response.KindEnum.StartProtectionEnum,
-                    Status = Microsoft.AzureBackup.DatasourcePlugin.Models.Response.StatusEnum.SucceededEnum,
                     StartTime = createdTime,
-                    CreatedTime = createdTime,
-                    EndTime = DateTime.UtcNow,
-                    PurgeTime = DateTime.UtcNow.AddHours(OperationsMap.gcOffsetInHours),
+                    EndTime = DateTimeOffset.UtcNow,
+                    PurgeTime = DateTimeOffset.UtcNow.AddHours(OperationsMap.gcOffsetInHours),
                     SucceededResponse = new StartProtectionStatus()  // Success case, dont need to return anything.
                 };
-                OperationsMap.UpdateOperation(Request.Query["operationId"], DateTime.UtcNow);
+                OperationsMap.UpdateOperation(Request.Query["operationId"], DateTimeOffset.UtcNow);
 
                 // 202 + response body
                 return StatusCode((int)HttpStatusCode.Accepted, JsonConvert.SerializeObject(response, Formatting.Indented));
             }
             catch (Exception ex)
             {
-                return StatusCode((int)HttpStatusCode.InternalServerError, JsonConvert.SerializeObject(Helper.FormErrorResponse(ex, createdTime, Microsoft.AzureBackup.DatasourcePlugin.Models.Response.KindEnum.StartProtectionEnum), Formatting.Indented));
+                return StatusCode((int)HttpStatusCode.InternalServerError, JsonConvert.SerializeObject(Helper.FormErrorResponse(ex, createdTime, OperationType.StartProtection), Formatting.Indented));
             }
 
         }
@@ -164,12 +158,12 @@ namespace SamplePlugin.Controllers
         [Route("/plugin:StopProtection")]
         public IActionResult StopProtection(StopProtectionRequest request)
         {
-            var createdTime = DateTime.UtcNow;
+            var createdTime = DateTimeOffset.UtcNow;
 
             try
             {
                 // Add to the Operations Map
-                var opDetails = new OperationDetails(createdTime, Microsoft.AzureBackup.DatasourcePlugin.Models.Response.KindEnum.StopProtectionEnum);
+                var opDetails = new OperationDetails(createdTime, OperationType.StopProtection);
                 OperationsMap.AddOperation(Request.Query["operationId"], opDetails);
 
 
@@ -178,25 +172,21 @@ namespace SamplePlugin.Controllers
                 // If your source dataplane owns part of the schedules, please seek Help: https://msazure.visualstudio.com/One/_wiki/wikis/DppDocumentation/210451/Getting-Help
 
                 // Success case - Syncronous completion (LRO reached terminal state - Status=Succeeded)
-                var response = new Response()
+                var response = new Response(Request.Query["operationId"], OperationType.StopProtection, ExecutionStatus.Succeeded, createdTime)
                 {
-                    Id = Request.Query["operationId"],
-                    Kind = Microsoft.AzureBackup.DatasourcePlugin.Models.Response.KindEnum.StopProtectionEnum,
-                    Status = Microsoft.AzureBackup.DatasourcePlugin.Models.Response.StatusEnum.SucceededEnum,
                     StartTime = createdTime,
-                    CreatedTime = createdTime,
-                    EndTime = DateTime.UtcNow,
-                    PurgeTime = DateTime.UtcNow.AddHours(OperationsMap.gcOffsetInHours),
+                    EndTime = DateTimeOffset.UtcNow,
+                    PurgeTime = DateTimeOffset.UtcNow.AddHours(OperationsMap.gcOffsetInHours),
                     SucceededResponse = new StopProtectionStatus() // Success case, dont need to return anything.
                 };
-                OperationsMap.UpdateOperation(Request.Query["operationId"], DateTime.UtcNow);
+                OperationsMap.UpdateOperation(Request.Query["operationId"], DateTimeOffset.UtcNow);
 
                 // 202 + response body
                 return StatusCode((int)HttpStatusCode.Accepted, JsonConvert.SerializeObject(response, Formatting.Indented));
             }
             catch (Exception ex)
             {
-                return StatusCode((int)HttpStatusCode.InternalServerError, JsonConvert.SerializeObject(Helper.FormErrorResponse(ex, createdTime, Microsoft.AzureBackup.DatasourcePlugin.Models.Response.KindEnum.StopProtectionEnum), Formatting.Indented));
+                return StatusCode((int)HttpStatusCode.InternalServerError, JsonConvert.SerializeObject(Helper.FormErrorResponse(ex, createdTime, OperationType.StopProtection), Formatting.Indented));
             }
         }
 
@@ -209,12 +199,12 @@ namespace SamplePlugin.Controllers
         [Route("/plugin:ValidateForBackup")]
         public IActionResult ValidateForBackup(ValidateForBackupRequest request)
         {
-            var createdTime = DateTime.UtcNow;
+            var createdTime = DateTimeOffset.UtcNow;
 
             try
             {
                 // Add to the Operations Map
-                var opDetails = new OperationDetails(createdTime, Microsoft.AzureBackup.DatasourcePlugin.Models.Response.KindEnum.StopProtectionEnum);
+                var opDetails = new OperationDetails(createdTime, OperationType.StopProtection);
                 OperationsMap.AddOperation(Request.Query["operationId"], opDetails);
 
                 // Get the DS and DSSet details from request
@@ -243,15 +233,11 @@ namespace SamplePlugin.Controllers
                 // If your plugin does not rely on VaultMSI token for internal authN, use that.
 
                 // Success case - Syncronous completion (LRO reached terminal state - Status=Succeeded)
-                var response = new Response()
+                var response = new Response(Request.Query["operationId"], OperationType.ValidateForBackup, ExecutionStatus.Succeeded, createdTime)
                 {
-                    Id = Request.Query["operationId"],
-                    Kind = Microsoft.AzureBackup.DatasourcePlugin.Models.Response.KindEnum.ValidateForBackupEnum,
-                    Status = Microsoft.AzureBackup.DatasourcePlugin.Models.Response.StatusEnum.SucceededEnum,
                     StartTime = createdTime,
-                    CreatedTime = createdTime,
-                    EndTime = DateTime.UtcNow,
-                    PurgeTime = DateTime.UtcNow.AddHours(OperationsMap.gcOffsetInHours),
+                    EndTime = DateTimeOffset.UtcNow,
+                    PurgeTime = DateTimeOffset.UtcNow.AddHours(OperationsMap.gcOffsetInHours),
                     SucceededResponse = new ValidateForBackupStatus()   // Success case, return  loopback context if required. Plugin specific.
                     {
                         LoopBackContext = JsonConvert.SerializeObject(new LoopBackMetadata()
@@ -261,14 +247,14 @@ namespace SamplePlugin.Controllers
                         })
                     }
                 };
-                OperationsMap.UpdateOperation(Request.Query["operationId"], DateTime.UtcNow);
+                OperationsMap.UpdateOperation(Request.Query["operationId"], DateTimeOffset.UtcNow);
 
                 // 202 + response body
                 return StatusCode((int)HttpStatusCode.Accepted, JsonConvert.SerializeObject(response, Formatting.Indented));
             }
             catch (Exception ex)
             {
-                return StatusCode((int)HttpStatusCode.InternalServerError, JsonConvert.SerializeObject(Helper.FormErrorResponse(ex, createdTime, Microsoft.AzureBackup.DatasourcePlugin.Models.Response.KindEnum.StopProtectionEnum), Formatting.Indented));
+                return StatusCode((int)HttpStatusCode.InternalServerError, JsonConvert.SerializeObject(Helper.FormErrorResponse(ex, createdTime, OperationType.StopProtection), Formatting.Indented));
             }
         }
 
@@ -281,12 +267,17 @@ namespace SamplePlugin.Controllers
         [Route("/plugin:Backup")]
         public IActionResult Backup(BackupRequest request)
         {
-            var createdTime = DateTime.UtcNow;
-
+            var createdTime = DateTimeOffset.UtcNow;
+            /*
+            byte[] buffer = new byte[20 * 1024];
+            int bytesRead = Request.Body.ReadAsync(buffer, 0, buffer.Length).Result;
+            string outputStr = Encoding.ASCII.GetString(buffer);
+            BackupRequest request = JsonConvert.DeserializeObject<BackupRequest>(outputStr);
+            */
             try
             {
                 // Add to the Operations Map
-                var opDetails = new OperationDetails(createdTime, Microsoft.AzureBackup.DatasourcePlugin.Models.Response.KindEnum.BackupEnum);
+                var opDetails = new OperationDetails(createdTime, OperationType.Backup);
                 OperationsMap.AddOperation(Request.Query["operationId"], opDetails);
 
                 // Copy over the request headers and query params.
@@ -300,13 +291,9 @@ namespace SamplePlugin.Controllers
 
                 // Backup is typically Long running, so Async completion (LRO Status=Running)
                 // The async Task will get completed later, and its terminal status will be available via the Poll GET.
-                var response = new Response()
+                var response = new Response(Request.Query["operationId"], opDetails.OperationKind, opDetails.Status, opDetails.CreatedTime)
                 {
-                    Id = Request.Query["operationId"],
-                    Kind = (Response.KindEnum?)Enum.Parse(typeof(Response.KindEnum), opDetails.OperationKind),
-                    Status = (Response.StatusEnum?)Enum.Parse(typeof(Response.StatusEnum), opDetails.Status),
                     StartTime = opDetails.StartTime,
-                    CreatedTime = opDetails.CreatedTime,
                     EndTime = opDetails.EndTime,
                     PurgeTime = opDetails.PurgeTime,
                     RunningResponse = new BackupStatus() // Running case, return  loopback context if required. Plugin specific.
@@ -315,7 +302,7 @@ namespace SamplePlugin.Controllers
                         {
                             Foo = "foo",
                             Bar = "bar",
-                        })
+                        }),
                     }
                 };
 
@@ -324,7 +311,7 @@ namespace SamplePlugin.Controllers
             }
             catch (Exception ex)
             {
-                return StatusCode((int)HttpStatusCode.InternalServerError, JsonConvert.SerializeObject(Helper.FormErrorResponse(ex, createdTime, Microsoft.AzureBackup.DatasourcePlugin.Models.Response.KindEnum.BackupEnum), Formatting.Indented));
+                return StatusCode((int)HttpStatusCode.InternalServerError, JsonConvert.SerializeObject(Helper.FormErrorResponse(ex, createdTime, OperationType.Backup), Formatting.Indented));
             }
 
         }
@@ -338,12 +325,12 @@ namespace SamplePlugin.Controllers
         [Route("/plugin:Restore")]
         public IActionResult Restore(RestoreRequest request)
         {
-            var createdTime = DateTime.UtcNow;
+            var createdTime = DateTimeOffset.UtcNow;
 
             try
             {
                 // Add to the Operations Map
-                var opDetails = new OperationDetails(createdTime, Microsoft.AzureBackup.DatasourcePlugin.Models.Response.KindEnum.RestoreEnum);
+                var opDetails = new OperationDetails(createdTime, OperationType.Restore);
                 OperationsMap.AddOperation(Request.Query["operationId"], opDetails);
 
                 // Copy over the request headers and query params.
@@ -357,13 +344,10 @@ namespace SamplePlugin.Controllers
 
                 // Restore is typically Long running, so Async completion (LRO Status=Running)
                 // The async Task will get completed later, and its terminal status will be available via the Poll GET.
-                var response = new Response()
+                var response = new Response(Request.Query["operationId"], (OperationType)Enum.Parse(typeof(OperationType), opDetails.OperationKind),
+                    (ExecutionStatus)Enum.Parse(typeof(ExecutionStatus), opDetails.Status), opDetails.CreatedTime)
                 {
-                    Id = Request.Query["operationId"],
-                    Kind = (Response.KindEnum?)Enum.Parse(typeof(Response.KindEnum), opDetails.OperationKind),
-                    Status = (Response.StatusEnum?)Enum.Parse(typeof(Response.StatusEnum), opDetails.Status),
                     StartTime = opDetails.StartTime,
-                    CreatedTime = opDetails.CreatedTime,
                     EndTime = opDetails.EndTime,
                     PurgeTime = opDetails.PurgeTime,
                     RunningResponse = new RestoreStatus() // Running case, return  loopback context if required. Plugin specific.
@@ -381,7 +365,7 @@ namespace SamplePlugin.Controllers
             }
             catch (Exception ex)
             {
-                return StatusCode((int)HttpStatusCode.InternalServerError, JsonConvert.SerializeObject(Helper.FormErrorResponse(ex, createdTime, Microsoft.AzureBackup.DatasourcePlugin.Models.Response.KindEnum.RestoreEnum), Formatting.Indented));
+                return StatusCode((int)HttpStatusCode.InternalServerError, JsonConvert.SerializeObject(Helper.FormErrorResponse(ex, createdTime, OperationType.Restore), Formatting.Indented));
             }
 
         }
@@ -407,125 +391,109 @@ namespace SamplePlugin.Controllers
             OperationDetails opDetails = OperationsMap.GetOperation(operationId);
             if (opDetails != null)
             {
-                Enum.TryParse(typeof(Response.StatusEnum), opDetails.Status, out var status);
-                Enum.TryParse(typeof(Response.KindEnum), opDetails.OperationKind, out var kind);
-                switch (status)
+                //Enum.TryParse(typeof(ExecutionStatus), opDetails.Status, out var status);
+                //Enum.TryParse(typeof(OperationType), opDetails.OperationKind, out var kind);
+                var status = opDetails.Status;
+                var kind = opDetails.OperationKind;
+
+                if ((ExecutionStatus)status == ExecutionStatus.Succeeded)
                 {
-                    case Microsoft.AzureBackup.DatasourcePlugin.Models.Response.StatusEnum.SucceededEnum:
+                    response = new Response(operationId, (OperationType)kind, (ExecutionStatus)status, opDetails.CreatedTime)
+                    {
+                        StartTime = opDetails.StartTime,
+                        EndTime = opDetails.EndTime,
+                        PurgeTime = opDetails.PurgeTime,
+                        SucceededResponse = new BackupStatus() // Succeeded case, return  loopback context if required. Plugin specific.
                         {
-                            response = new Response()
+                            LoopBackContext = JsonConvert.SerializeObject(new LoopBackMetadata()
                             {
-                                Id = operationId,
-                                Kind = (Response.KindEnum?)kind,
-                                Status = (Response.StatusEnum?)status,
-                                StartTime = opDetails.StartTime,
-                                CreatedTime = opDetails.CreatedTime,
-                                EndTime = opDetails.EndTime,
-                                PurgeTime = opDetails.PurgeTime,
-                                SucceededResponse = new BackupStatus() // Succeeded case, return  loopback context if required. Plugin specific.
-                                {
-                                    LoopBackContext = JsonConvert.SerializeObject(new LoopBackMetadata()
-                                    {
-                                        Foo = "foo",
-                                        Bar = "bar",
-                                    })
-                                }
-                            };
-
-                            code = HttpStatusCode.OK;
+                                Foo = "foo",
+                                Bar = "bar",
+                            })
                         }
-                        break;
-                    case Microsoft.AzureBackup.DatasourcePlugin.Models.Response.StatusEnum.RunningEnum:
+                    };
+                    code = HttpStatusCode.OK;
+                }
+ 
+                else if ((ExecutionStatus)status ==  ExecutionStatus.Running)
+                {
+                    response = new Response(operationId, (OperationType)kind, (ExecutionStatus)status, opDetails.CreatedTime)
+                    {
+                        StartTime = opDetails.StartTime,
+                        EndTime = opDetails.EndTime,
+                        PurgeTime = opDetails.PurgeTime,
+                        RunningResponse = new BackupStatus() // Running case, return  loopback context if required. Plugin specific.
                         {
-                            response = new Response()
+                            LoopBackContext = JsonConvert.SerializeObject(new LoopBackMetadata()
                             {
-                                Id = operationId,
-                                Kind = (Response.KindEnum?)kind,
-                                Status = (Response.StatusEnum?)status,
-                                StartTime = opDetails.StartTime,
-                                CreatedTime = opDetails.CreatedTime,
-                                EndTime = opDetails.EndTime,
-                                PurgeTime = opDetails.PurgeTime,
-                                RunningResponse = new BackupStatus() // Running case, return  loopback context if required. Plugin specific.
-                                {
-                                    LoopBackContext = JsonConvert.SerializeObject(new LoopBackMetadata()
-                                    {
-                                        Foo = "foo",
-                                        Bar = "bar",
-                                    })
-                                }
-                            };
-
-                            code = HttpStatusCode.OK;
+                                Foo = "foo",
+                                Bar = "bar",
+                            })
                         }
-                        break;
-                    case Microsoft.AzureBackup.DatasourcePlugin.Models.Response.StatusEnum.FailedEnum:
+                    };
+                        code = HttpStatusCode.OK;
+                }
+
+                else if ((ExecutionStatus)status ==  ExecutionStatus.Failed)
+                {
+                    response = new Response(operationId, (OperationType)kind, (ExecutionStatus)status, opDetails.CreatedTime)
+                    {
+                        StartTime = opDetails.StartTime,
+                        EndTime = opDetails.EndTime,
+                        PurgeTime = opDetails.PurgeTime,
+                        FailedResponse = new BackupStatus() // Failed case, return  loopback context if required. Plugin specific. Add error
                         {
-                            response = new Response()
+                            Error = opDetails.OpError,
+                            LoopBackContext = JsonConvert.SerializeObject(new LoopBackMetadata()
                             {
-                                Id = operationId,
-                                Kind = (Response.KindEnum?)kind,
-                                Status = (Response.StatusEnum?)status,
-                                StartTime = opDetails.StartTime,
-                                CreatedTime = opDetails.CreatedTime,
-                                EndTime = opDetails.EndTime,
-                                PurgeTime = opDetails.PurgeTime,
-                                FailedResponse = new BackupStatus() // Failed case, return  loopback context if required. Plugin specific. Add error
-                                {
-                                    Error = opDetails.OpError,
-                                    LoopBackContext = JsonConvert.SerializeObject(new LoopBackMetadata()
-                                    {
-                                        Foo = "foo",
-                                        Bar = "bar",
-                                    })
-                                }
-                            };
-
-                            code = (HttpStatusCode)opDetails.StatusCode;
+                                Foo = "foo",
+                                Bar = "bar",
+                            })
                         }
-                        break;
-                    case Microsoft.AzureBackup.DatasourcePlugin.Models.Response.StatusEnum.CancelledEnum:
+                    };
+
+                    code = (HttpStatusCode)opDetails.StatusCode;
+                }
+
+                else if ((ExecutionStatus)status == ExecutionStatus.Cancelled)
+                {
+                    response = new Response(operationId, (OperationType)kind, (ExecutionStatus)status, opDetails.CreatedTime)
+                    {
+                        StartTime = opDetails.StartTime,
+                        EndTime = opDetails.EndTime,
+                        PurgeTime = opDetails.PurgeTime,
+                        CanceledResponse = new BackupStatus() // Cancelled case, return  loopback context if required. Plugin specific. Add error
                         {
-                            response = new Response()
+                            Error = opDetails.OpError,
+                            LoopBackContext = JsonConvert.SerializeObject(new LoopBackMetadata()
                             {
-                                Id = operationId,
-                                Kind = (Response.KindEnum?)kind,
-                                Status = (Response.StatusEnum?)status,
-                                StartTime = opDetails.StartTime,
-                                CreatedTime = opDetails.CreatedTime,
-                                EndTime = opDetails.EndTime,
-                                PurgeTime = opDetails.PurgeTime,
-                                CancelledResponse = new BackupStatus() // Cancelled case, return  loopback context if required. Plugin specific. Add error
-                                {
-                                    Error = opDetails.OpError,
-                                    LoopBackContext = JsonConvert.SerializeObject(new LoopBackMetadata()
-                                    {
-                                        Foo = "foo",
-                                        Bar = "bar",
-                                    })
-                                }
-                            };
-
-                            code = (HttpStatusCode)opDetails.StatusCode;
+                                Foo = "foo",
+                                Bar = "bar",
+                            })
                         }
-                        break;
+                    };
+                    code = (HttpStatusCode)opDetails.StatusCode;
                 }
             }
             else
             {
                 // Operation Id not found in the map
                 code = HttpStatusCode.NotFound;
-                response = new Response()
+                response = new Response(operationId, OperationType.Backup, ExecutionStatus.NotStarted, DateTimeOffset.MinValue)
                 {
-                    Id = Request.Headers["operationId"],
                     /* Wont set these fields, as opDetails are lost:
-
+                
                     Kind = ?,
                     Status = ?,
                     StartTime = ?,
                     CreatedTime = ?,
                     EndTime = ?,
                     PurgeTime = ?,
+                    
+                    StartTime = DateTimeOffset.MinValue,
+                    CreatedTime = DateTimeOffset.MinValue,
+                    PurgeTime = DateTimeOffset.MinValue,
+                    EndTime = DateTimeOffset.MinValue,    
                     */
                     FailedResponse = new BaseStatus() // We dont know the kind, so must return BaseStatus
                     {
@@ -541,7 +509,6 @@ namespace SamplePlugin.Controllers
 
             // One of the httpStatusCodes set on the Operations + response body
             return StatusCode((int)code, JsonConvert.SerializeObject(response, Formatting.Indented));
-
         }
 
         #endregion
@@ -650,7 +617,7 @@ namespace SamplePlugin.Controllers
                   Helper.headers["subscriptionid"]);
 
             // Update the operation
-            OperationsMap.UpdateOperation(Helper.qparams["operationId"], DateTime.UtcNow);
+            OperationsMap.UpdateOperation(Helper.qparams["operationId"], DateTimeOffset.UtcNow);
 
             return;
         }
@@ -739,7 +706,7 @@ namespace SamplePlugin.Controllers
             pitReader.CleanupStorageUnits();
 
             // Update the operation
-            OperationsMap.UpdateOperation(Helper.qparams["operationId"], DateTime.UtcNow);
+            OperationsMap.UpdateOperation(Helper.qparams["operationId"], DateTimeOffset.UtcNow);
 
             return;
         }
@@ -756,7 +723,7 @@ namespace SamplePlugin.Controllers
                 Helper.headers["x-ms-correlation-request-id"],
                 Helper.headers["subscriptionid"]);
 
-            OperationsMap.UpdateOperation(Helper.qparams["operationId"], DateTime.UtcNow);
+            OperationsMap.UpdateOperation(Helper.qparams["operationId"], DateTimeOffset.UtcNow);
         }
 
         #endregion
@@ -796,7 +763,7 @@ namespace SamplePlugin.Controllers
 
         public IActionResult TestPost(TestPayload p)
         {
-            var createdTime = DateTime.UtcNow;
+            var createdTime = DateTimeOffset.UtcNow;
 
             try
             {
@@ -812,7 +779,7 @@ namespace SamplePlugin.Controllers
                 };
 
                 // Add to the Operations Map
-                var opDetails = new OperationDetails(DateTime.UtcNow, Microsoft.AzureBackup.DatasourcePlugin.Models.Response.KindEnum.BackupEnum);
+                var opDetails = new OperationDetails(DateTimeOffset.UtcNow, OperationType.Backup);
                 OperationsMap.AddOperation(Request.Query["operationId"], opDetails);
 
                 // Copy over the request headers and query params.
@@ -826,13 +793,9 @@ namespace SamplePlugin.Controllers
 
                 // Async completion - send Running response now.
                 // The async Task will get completed later, and its terminal status will be available via the Poll GET.
-                var response = new Response()
+                var response = new Response(Request.Query["operationId"], OperationType.Backup, ExecutionStatus.Running, createdTime)
                 {
-                    Id = Request.Query["operationId"],
-                    Kind = Microsoft.AzureBackup.DatasourcePlugin.Models.Response.KindEnum.BackupEnum,
-                    Status = Microsoft.AzureBackup.DatasourcePlugin.Models.Response.StatusEnum.RunningEnum,
                     StartTime = createdTime,
-                    CreatedTime = createdTime,
                     EndTime = null,
                     PurgeTime = null,
                     RunningResponse = new BackupStatus() // Running case, return LoopBack ctx
@@ -847,7 +810,7 @@ namespace SamplePlugin.Controllers
             catch (Exception ex)
             {
 
-                return StatusCode((int)HttpStatusCode.InternalServerError, JsonConvert.SerializeObject(Helper.FormErrorResponse(ex, createdTime, Microsoft.AzureBackup.DatasourcePlugin.Models.Response.KindEnum.ValidateForProtectionEnum), Formatting.Indented));
+                return StatusCode((int)HttpStatusCode.InternalServerError, JsonConvert.SerializeObject(Helper.FormErrorResponse(ex, createdTime, OperationType.ValidateForProtection), Formatting.Indented));
             }
         }
         #endregion

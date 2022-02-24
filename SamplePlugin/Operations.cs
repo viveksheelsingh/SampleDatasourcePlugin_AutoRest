@@ -31,21 +31,21 @@ namespace SamplePlugin
         public string OperationPayload { get; set; } // plugin specific data
         public string OperationKind { get; set; }
         public string Status { get; set; }
-        public DateTime? StartTime { get; set; }
-        public DateTime? CreatedTime { get; set; }
-        public DateTime? EndTime { get; set; }
-        public DateTime? PurgeTime { get; set; }
+        public DateTimeOffset StartTime { get; set; }
+        public DateTimeOffset CreatedTime { get; set; }
+        public DateTimeOffset EndTime { get; set; }
+        public DateTimeOffset PurgeTime { get; set; }
         public Error? OpError { get; set; }
         public HttpStatusCode? StatusCode { get; set; }
 
-        public OperationDetails (DateTime createdTime, Response.KindEnum kind)
+        public OperationDetails (DateTimeOffset createdTime, OperationType kind)
         {
             CreatedTime = createdTime;
-            EndTime = null;
-            PurgeTime = null;
+            //EndTime = null;
+            //PurgeTime = null;
             OperationPayload = "custom plugin payload";
             StartTime = createdTime;
-            Status = Response.StatusEnum.RunningEnum.ToString();
+            Status = ExecutionStatus.Running.ToString();
             OperationKind = kind.ToString();
             OpError = null;
             StatusCode = HttpStatusCode.OK;
@@ -93,14 +93,14 @@ namespace SamplePlugin
         /// <param name="endTime"></param>
         /// <param name="code"></param>
         /// <param name="error"></param>
-        public static void UpdateOperation(string operationId, DateTime endTime, HttpStatusCode code, Error error)
+        public static void UpdateOperation(string operationId, DateTimeOffset endTime, HttpStatusCode code, Error error)
         {
             OperationDetails opDetails = GetOperation(operationId);
             opDetails.EndTime = endTime;
             opDetails.PurgeTime = endTime.AddHours(gcOffsetInHours);
             opDetails.StatusCode = code;
             opDetails.OpError = error;
-            opDetails.Status = Response.StatusEnum.FailedEnum.ToString();
+            opDetails.Status = ExecutionStatus.Failed.ToString();
 
             // Set back in the map
             opMap[operationId] = opDetails;
@@ -110,12 +110,12 @@ namespace SamplePlugin
         /// Overload for success case
         /// </summary>
         /// <param name="endTime"></param>
-        public static void UpdateOperation(string operationId, DateTime endTime)
+        public static void UpdateOperation(string operationId, DateTimeOffset endTime)
         {
             OperationDetails opDetails = GetOperation(operationId);
             opDetails.EndTime = endTime;
             opDetails.PurgeTime = endTime.AddHours(gcOffsetInHours);
-            opDetails.Status = Response.StatusEnum.SucceededEnum.ToString();
+            opDetails.Status = ExecutionStatus.Succeeded.ToString();
 
             // Set back in the map
             opMap[operationId] = opDetails;

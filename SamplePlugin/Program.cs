@@ -7,6 +7,9 @@ builder.Services.AddControllers();
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen();
 
+// Needed because of: https://stackoverflow.com/questions/58885384/the-json-value-could-not-be-converted-to-system-nullablesystem-int32
+builder.Services.AddControllers().AddNewtonsoftJson();
+
 var app = builder.Build();
 
 // Configure the HTTP request pipeline.
