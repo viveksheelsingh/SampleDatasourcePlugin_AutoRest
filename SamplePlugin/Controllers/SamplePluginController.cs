@@ -317,6 +317,142 @@ namespace SamplePlugin.Controllers
         }
 
         /// <summary>
+        /// Controller for the Backup verb
+        /// </summary>
+        /// <param name="request"></param>
+        /// <returns></returns>
+        [HttpPost]
+        [Route("/plugin:CommitOrRollbackBackup")]
+        public IActionResult CommitOrRollbackBackup(CommitorRollbackBackupRequest request)
+        {
+            var createdTime = DateTimeOffset.UtcNow;
+            bool rollBack = false;
+            
+            try
+            {
+                // Add to the Operations Map
+                var opDetails = new OperationDetails(createdTime, OperationType.CommitOrRollbackBackup);
+                OperationsMap.AddOperation(Request.Query["operationId"], opDetails);
+
+                // Copy over the request headers and query params.
+                Helper.CopyReqHeaderAndQueryParams(Request);
+
+                // Whether to commit or rollback ? Use loopback from previous stage to determine
+                // Its use is plugin specific.
+                string loopBackCtx = request.LoopBackContext;
+                if (!string.IsNullOrEmpty(loopBackCtx))
+                {
+                    LoopBackMetadata loopbkMetadata = JsonConvert.DeserializeObject<LoopBackMetadata>(loopBackCtx);
+                    // previous phase is reporting an error, so rollback.
+                    rollBack = !string.IsNullOrEmpty(loopbkMetadata.ErrorCode);
+                }
+
+                if (rollBack)
+                {
+                    // Do rollback actions on SourceDataplane, if required.
+                    // pit has been committed (or not) in the backu pphase itself.
+                }
+                else 
+                {
+                    // Do commit actions on SourceDataplane, if required.
+                    // pit has been committed (or not) in the backu pphase itself.
+                }
+
+                // Success case - Syncronous completion (LRO reached terminal state - Status=Succeeded)
+                var response = new Response(Request.Query["operationId"], opDetails.OperationKind, ExecutionStatus.Succeeded, opDetails.CreatedTime)
+                {
+                    StartTime = opDetails.StartTime,
+                    EndTime = opDetails.EndTime,
+                    PurgeTime = DateTimeOffset.UtcNow.AddHours(OperationsMap.gcOffsetInHours),
+                    SucceededResponse = new CommitOrRollbackBackupStatus() 
+                    {
+                        // plugin may loopback this info from backup phase if it cannot get it from the source-dataplane now
+                        DatasourceSizeInBytes = 1024,
+                        DataTransferredInBytes = 1090,
+                    },
+                };
+
+                // 202 + response body
+                return StatusCode((int)HttpStatusCode.Accepted, JsonConvert.SerializeObject(response, Formatting.Indented));
+            }
+            catch (Exception ex)
+            {
+                return StatusCode((int)HttpStatusCode.InternalServerError, JsonConvert.SerializeObject(Helper.FormErrorResponse(ex, createdTime, OperationType.Backup), Formatting.Indented));
+            }
+
+        }
+
+        /// <summary>
+        /// Controller for the Restore verb
+        /// </summary>
+        /// <param name="request"></param>
+        /// <returns></returns>
+        [HttpPost]
+        [Route("/plugin:ValidateForRestore")]
+        public IActionResult ValidateForRestore(ValidateForRestoreRequest request)
+        {
+            var createdTime = DateTimeOffset.UtcNow;
+
+            try
+            {
+                // Add to the Operations Map
+                var opDetails = new OperationDetails(createdTime, OperationType.ValidateForRestore);
+                OperationsMap.AddOperation(Request.Query["operationId"], opDetails);
+
+                // Get the DS and DSSet details from request
+                Datasource srcDs = request.SourceDatasource;
+                DatasourceSet srcDsSet = request.SourceDatasourceSet;
+                Datasource tgtDs = request.TargetDatasource;
+                DatasourceSet tgtDsSet = request.TargetDatasourceSet;
+
+                // Get the vault MSI token. 
+                string vaultMSIMgmtToken = request.DatasourceAccessToken.MgmtPlaneToken;
+                string vaultMSIDataplaneToken = request.DatasourceAccessToken.DataPlaneToken;
+
+                // Perform RBAC checks. Must check if the Vault MSI has the right RBAC setup on the target-datasource
+                // https://docs.microsoft.com/en-us/rest/api/authorization/permissions/list-for-resource
+
+
+                // Now do any validations on the datasource/datasourceSet (specific to each plugin):
+                // - Can this datasource be restored with the params in this request ?
+                // - Is the datasource in a state where it can be restored ? 
+                // - Are any other networking pre-requisites met for restore to succeed ?
+                // - etc.
+                //
+                // Use the vaultMSIMgmtToken as the authorizationHeader in an ARM call like: 
+                // GET https://management.azure.com/subscriptions/f75d8d8b-6735-4697-82e1-1a7a3ff0d5d4/resourceGroups/viveksipgtest/providers/Microsoft.DBforPostgreSQL/servers/viveksipgtest?api-version=2017-12-01 
+                // Use the vaultMSIDataplaneToken as the authorizationHeader in any dataplane calls like:
+                // GET https://testContainer.blob.core.windows.net/018a635f-f899-4344-9c19-b81f4455d900
+                //
+                // If your plugin does not rely on VaultMSI token for internal authN, use that.
+
+                // Success case - Syncronous completion (LRO reached terminal state - Status=Succeeded)
+                var response = new Response(Request.Query["operationId"], OperationType.ValidateForRestore, ExecutionStatus.Succeeded, createdTime)
+                {
+                    StartTime = createdTime,
+                    EndTime = DateTimeOffset.UtcNow,
+                    PurgeTime = DateTimeOffset.UtcNow.AddHours(OperationsMap.gcOffsetInHours),
+                    SucceededResponse = new ValidateForRestoreStatus()   // Success case, return  loopback context if required. Plugin specific.
+                    {
+                        LoopBackContext = JsonConvert.SerializeObject(new LoopBackMetadata()
+                        {
+                            Foo = "foo",
+                            Bar = "bar",
+                        })
+                    }
+                };
+                OperationsMap.UpdateOperation(Request.Query["operationId"], DateTimeOffset.UtcNow);
+
+                // 202 + response body
+                return StatusCode((int)HttpStatusCode.Accepted, JsonConvert.SerializeObject(response, Formatting.Indented));
+            }
+            catch (Exception ex)
+            {
+                return StatusCode((int)HttpStatusCode.InternalServerError, JsonConvert.SerializeObject(Helper.FormErrorResponse(ex, createdTime, OperationType.ValidateForRestore), Formatting.Indented));
+            }
+        }
+
+        /// <summary>
         /// Controller for the Restore verb
         /// </summary>
         /// <param name="request"></param>
@@ -368,6 +504,69 @@ namespace SamplePlugin.Controllers
                 return StatusCode((int)HttpStatusCode.InternalServerError, JsonConvert.SerializeObject(Helper.FormErrorResponse(ex, createdTime, OperationType.Restore), Formatting.Indented));
             }
 
+        }
+
+        /// <summary>
+        /// Controller for the CommitOrRollbackRestore verb
+        /// </summary>
+        /// <param name="request"></param>
+        /// <returns></returns>
+        [HttpPost]
+        [Route("/plugin:CommitOrRollbackRestore")]
+        public IActionResult CommitOrRollbackRestore(CommitOrRollbackRestoreRequest request)
+        {
+            var createdTime = DateTimeOffset.UtcNow;
+            bool rollBack = false;
+
+            try
+            {
+                // Add to the Operations Map
+                var opDetails = new OperationDetails(createdTime, OperationType.CommitOrRollbackRestore);
+                OperationsMap.AddOperation(Request.Query["operationId"], opDetails);
+
+                // Copy over the request headers and query params.
+                Helper.CopyReqHeaderAndQueryParams(Request);
+
+                // Whether to commit or rollback ? Use loopback from previous stage to determine
+                // Its use is plugin specific.
+                string loopBackCtx = request.LoopBackContext;
+                if (!string.IsNullOrEmpty(loopBackCtx))
+                {
+                    LoopBackMetadata loopbkMetadata = JsonConvert.DeserializeObject<LoopBackMetadata>(loopBackCtx);
+                    // previous phase is reporting an error, so rollback.
+                    rollBack = !string.IsNullOrEmpty(loopbkMetadata.ErrorCode);
+                }
+
+                if (rollBack)
+                {
+                    // Do rollback actions on SourceDataplane, if required.
+                }
+                else
+                {
+                    // Do commit actions on SourceDataplane, if required.
+                }
+
+                // Success case - Syncronous completion (LRO reached terminal state - Status=Succeeded)
+                var response = new Response(Request.Query["operationId"], opDetails.OperationKind, ExecutionStatus.Succeeded, opDetails.CreatedTime)
+                {
+                    StartTime = opDetails.StartTime,
+                    EndTime = opDetails.EndTime,
+                    PurgeTime = DateTimeOffset.UtcNow.AddHours(OperationsMap.gcOffsetInHours),
+                    SucceededResponse = new CommitOrRollbackRestoreStatus()
+                    {
+                        // plugin may loopback this info from backup phase if it cannot get it from the source-dataplane now
+                        DataTransferredInBytes = 1090,
+                        OriginalDatasourceSizeInBytes = 1024 // this may be queries from the pit-metadata
+                    },
+                };
+
+                // 202 + response body
+                return StatusCode((int)HttpStatusCode.Accepted, JsonConvert.SerializeObject(response, Formatting.Indented));
+            }
+            catch (Exception ex)
+            {
+                return StatusCode((int)HttpStatusCode.InternalServerError, JsonConvert.SerializeObject(Helper.FormErrorResponse(ex, createdTime, OperationType.Backup), Formatting.Indented));
+            }
         }
 
         /// <summary>
@@ -631,9 +830,9 @@ namespace SamplePlugin.Controllers
         private async void RestoreInternal(RestoreRequest request)
         {
             // Get the source and target DS and DSSet details from request
-            Datasource srcds = request.SourceDatasource;
+            Datasource srcDs = request.SourceDatasource;
             DatasourceSet srcDsSet = request.SourceDatasourceSet;
-            Datasource tgtds = request.TargetDatasource;
+            Datasource tgtDs = request.TargetDatasource;
             DatasourceSet tgtDsSet = request.TargetDatasourceSet;
 
             // Get the vault MSI token. 
