@@ -123,7 +123,8 @@ namespace SamplePlugin.Controllers
                 OperationsMap.AddOperation(Request.Query["operationId"], opDetails);
 
                 // Repeat the same checks as done in ValidateForProtection.
-                // If your source dataplane owns part of the schedules, please seek Help: https://msazure.visualstudio.com/One/_wiki/wikis/DppDocumentation/210451/Getting-Help
+                // If your source dataplane owns part of the schedules, please seek Help:
+                // https://msazure.visualstudio.com/One/_wiki/wikis/DppDocumentation/226201/Getting-Help
 
                 // Perform any operations on your source dataplane here. 
                 // e.g. Does your resource reqires toggling some property called: EnabledForBackup ? Set it now
@@ -169,7 +170,8 @@ namespace SamplePlugin.Controllers
 
                 // Clear any state you toggled in StartProtection
                 // e.g. Does your resource reqires toggling some property called: EnabledForBackup ? Unset it now 
-                // If your source dataplane owns part of the schedules, please seek Help: https://msazure.visualstudio.com/One/_wiki/wikis/DppDocumentation/210451/Getting-Help
+                // If your source dataplane owns part of the schedules, please seek Help:
+                // https://msazure.visualstudio.com/One/_wiki/wikis/DppDocumentation/226201/Getting-Help
 
                 // Success case - Syncronous completion (LRO reached terminal state - Status=Succeeded)
                 var response = new Response(Request.Query["operationId"], OperationType.StopProtection, ExecutionStatus.Succeeded, createdTime)
