@@ -4,7 +4,7 @@ using System.Net;
 namespace SamplePlugin
 {
     /// <summary>
-    /// Plugin specific LoopBackMetadata class. See https://msazure.visualstudio.com/One/_wiki/wikis/DppDocumentation/224106/Loopback-Context
+    /// Plugin specific LoopBackMetadata class. See https://msazure.visualstudio.com/One/_wiki/wikis/DppDocumentation/226209/Loopback-Context
     /// </summary>
     internal class LoopBackMetadata
     {
@@ -57,7 +57,7 @@ namespace SamplePlugin
         /// <summary>
         /// Plugin specific implementation for maintaning the operations collection.
         /// This sample uses an in-memory dictionary. 
-        /// For more details, please refer to: https://msazure.visualstudio.com/One/_wiki/wikis/DppDocumentation/220542/Idempotency-and-crash-scenarios
+        /// For more details, please refer to:https://msazure.visualstudio.com/One/_wiki/wikis/DppDocumentation/226187/Idempotency-and-crash-scenarios
         /// </summary>
         private static Dictionary<string, OperationDetails> opMap = new Dictionary<string, OperationDetails>();
 
