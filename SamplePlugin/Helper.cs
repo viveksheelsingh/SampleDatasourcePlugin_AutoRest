@@ -1,14 +1,37 @@
 ﻿using Microsoft.AspNetCore.Mvc;
 using Microsoft.AzureBackup.DatasourcePlugin.Models;
+using Microsoft.Internal.AzureBackup.DataProtection.Common.Interface;
+using Microsoft.Internal.AzureBackup.DataProtection.Common.PitManager;
+using Microsoft.Internal.AzureBackup.DataProtection.Common.PitManager.PitManagerFactories;
+using Microsoft.Internal.AzureBackup.DataProtection.Common.PitManager.PitManagerInterfaces;
+using Microsoft.Internal.AzureBackup.DataProtection.PitManagerInterface;
+using Microsoft.Internal.CloudBackup.Common.Diag;
 using Newtonsoft.Json;
+using NSubstitute;
+using SamplePlugin.Controllers;
 using System.Net;
+using Error = Microsoft.AzureBackup.DatasourcePlugin.Models.Error;
+using ExecutionStatus = Microsoft.AzureBackup.DatasourcePlugin.Models.ExecutionStatus;
+using InnerError = Microsoft.AzureBackup.DatasourcePlugin.Models.InnerError;
 
 namespace SamplePlugin
 {
     public static class Helper
     {
         public static Dictionary <string, string> headers = new Dictionary<string, string>();
-        public static Dictionary <string, string> qparams = new Dictionary<string, string>();
+        public static Dictionary<string, string> qparams = new Dictionary<string, string>();
+
+        // PitMgr mocks related
+        public static IStreamPitFormatWriter fakeWriter = null;
+        public static IStreamPitFormatReader fakeReader = null;
+        public static IPitManager fakePitmgr = null;
+        public static IPit fakePit = null;
+        public static IPit dummyPit = null;
+        public static IPitManagerFactory fakePitMgrFactory = null;
+        public static MemoryStream memStream = new MemoryStream();
+        public static FileStream fStream = null;
+        public static PassthroughStream ptStream = null;
+
         public static void CopyReqHeaderAndQueryParams(HttpRequest Request)
         {
             foreach (var h in Request.Headers)
@@ -104,6 +127,73 @@ namespace SamplePlugin
                     }
             }
             */
+        }
+
+        /// <summary>
+        /// Setups up mocks for PitManager. Cant use reeal one as authN to real Azure Svcs wont be possible
+        /// </summary>
+        /// <param name="rpCatalogInitParams"></param>
+        /// <param name="datastoreInitParams"></param>
+        public static void SetupPitmgrMocks(IDictionary<string, string> rpCatalogInitParams, IDictionary<string, string> datastoreInitParams,
+            ILogger logger, DiagContextServiceInfo diagCtx)
+        {
+            fakePitMgrFactory = Substitute.For<IPitManagerFactory>();
+            fakeWriter = Substitute.For<IStreamPitFormatWriter>();
+            fakeReader = Substitute.For<IStreamPitFormatReader>();
+            fakePit = Substitute.For<IPit>();
+            fakePitmgr = Substitute.For<IPitManager>();
+
+            IPitManager pitMgr = PitManagerFactory.Instance.GetPitManager(rpCatalogInitParams, datastoreInitParams, logger, diagContext: diagCtx);
+            // Create dummy Pit.
+            dummyPit = pitMgr.CreatePit(rpCatalogInitParams[VaultAndStoreInitializationParamsKeys.RecoveryPointId],
+                 PitFormatType.AzureStorageBlockBlobUnseekableStream,
+                 BackupType.Full);
+
+            fakePitMgrFactory.GetPitManager(Arg.Any<Dictionary<string, string>>(),
+                Arg.Any<Dictionary<string, string>>(), Arg.Any<ILogger>(), Arg.Any<PitManagerType>(), Arg.Any<DiagContextServiceInfo>())
+                .Returns(fakePitmgr);
+
+            fakePitmgr.CreatePit(Arg.Any<string>(), Arg.Any<PitFormatType>(), Arg.Any<BackupType>())
+                .Returns(fakePit);
+
+            fakePitmgr.CreatePit(Arg.Any<string>(), Arg.Any<PitFormatType>(), Arg.Any<BackupType>(), Arg.Any<RetentionTagInfo>(),
+                Arg.Any<Microsoft.Internal.AzureBackup.DataProtection.Common.Interface.PolicyInfo>(), Arg.Any<string>(), Arg.Any<DateTimeOffset>())
+                .Returns(fakePit);
+
+            fakePit.PitFormatWriter.Returns(fakeWriter);
+            fakePit.PitFormatReader.Returns(fakeReader);
+
+            fakePit.When(x => x.Commit()).Do(x => { });
+
+            fakeWriter.When(x => x.AddStorageUnit(Arg.Any<string>(), Arg.Any<int>()))
+                .Do(x => { });
+
+            fakePitmgr.GetPit(Arg.Any<string>()).Returns(fakePit);
+
+            fakePit.When(x => x.InitializePitFormatReader())
+                .Do(x => { });
+
+            fakeWriter.CreateStream(Arg.Any<string>(), Arg.Any<int>(), Arg.Any<bool>())
+                 .Returns(x => {
+                     ptStream = new PassthroughStream(new FileStream(Path.Combine(".", @"bkpstream"), FileMode.Create));
+                     return ptStream;
+                 });
+
+            fakeReader.OpenStream(Arg.Any<string>(), Arg.Any<ILogger>(), Arg.Any<int>(), Arg.Any<bool>())
+                .Returns(x => {
+                    ptStream = new PassthroughStream(new FileStream(Path.Combine(".", @"bkpstream"), FileMode.Open));
+                    return ptStream;
+                });
+
+            fakeReader.When(x => x.CleanupStorageUnits(Arg.Any<string>()))
+                .Do(x => { });
+            fakeWriter.When(x => x.CleanupStorageUnits(Arg.Any<string>()))
+                .Do(x => { });
+
+            // make the test use the fakePitMgr factory.
+            // Once the factory is fake, everything underneath can be faked.
+            SamplePluginController.pitmgrFactory = fakePitMgrFactory;
+
         }
     }
 }

@@ -8,6 +8,8 @@ using Microsoft.AspNetCore.Mvc;
 using Microsoft.AzureBackup.DatasourcePlugin.Models;
 using Microsoft.Internal.AzureBackup.DataProtection.Common.Interface;
 using Microsoft.Internal.AzureBackup.DataProtection.Common.PitManager;
+using Microsoft.Internal.AzureBackup.DataProtection.Common.PitManager.PitManagerFactories;
+using Microsoft.Internal.AzureBackup.DataProtection.Common.PitManager.PitManagerInterfaces;
 using Microsoft.Internal.AzureBackup.DataProtection.PitManagerInterface;
 using Microsoft.Internal.CloudBackup.Common.Diag;
 using Newtonsoft.Json;
@@ -29,6 +31,7 @@ namespace SamplePlugin.Controllers
 
         private readonly ILogger<SamplePluginController> _logger;
         private readonly string streamName = "testStream";
+        public static IPitManagerFactory pitmgrFactory = PitManagerFactory.Instance;
 
         public SamplePluginController(ILogger<SamplePluginController> logger)
         {
@@ -482,8 +485,7 @@ namespace SamplePlugin.Controllers
 
                 // Restore is typically Long running, so Async completion (LRO Status=Running)
                 // The async Task will get completed later, and its terminal status will be available via the Poll GET.
-                var response = new Response(Request.Query["operationId"], (OperationType)Enum.Parse(typeof(OperationType), opDetails.OperationKind),
-                    (ExecutionStatus)Enum.Parse(typeof(ExecutionStatus), opDetails.Status), opDetails.CreatedTime)
+                var response = new Response(Request.Query["operationId"], opDetails.OperationKind, opDetails.Status, opDetails.CreatedTime)
                 {
                     StartTime = opDetails.StartTime,
                     EndTime = opDetails.EndTime,
@@ -723,7 +725,21 @@ namespace SamplePlugin.Controllers
         /// <param name="qparams"></param>
         private async void BackupInternal(BackupRequest request)
         {
-            await Task.Delay(10 * 1000);
+            //await Task.Delay(10 * 1000);
+            // Need to pass the headers to PitMgr so that the same can propogate to DPP-Target dataplane
+            DiagContextServiceInfo diagCtx = new DiagContextServiceInfo()
+            {
+                SubscriptionId = new Guid(Helper.headers["subscriptionid"]),
+                ResourceId = Helper.headers["x-ms-correlation-request-id"],
+                TaskId = Helper.headers["x-ms-correlation-request-id"],
+                RequestId = Helper.headers["x-ms-correlation-request-id"]
+            };
+
+            // //////////////////////////////////////////////
+            // Setup PitManager mocks - Test environment only
+            // //////////////////////////////////////////////
+            Helper.SetupPitmgrMocks(request.RPCatalogInitializeParams, request.DatastoreInitializeParams, _logger, diagCtx);
+
             // Get the DS and DSSet details from request
             Datasource ds = request.Datasource;
             DatasourceSet dsSet = request.DatasourceSet;
@@ -737,7 +753,7 @@ namespace SamplePlugin.Controllers
             string loopBackCtx = request.LoopBackContext;
             if (!string.IsNullOrEmpty(loopBackCtx))
             {
-                LoopBackMetadata loopbkMetadata = JsonConvert.DeserializeObject<LoopBackMetadata>(loopBackCtx);
+                // LoopBackMetadata loopbkMetadata = JsonConvert.DeserializeObject<LoopBackMetadata>(loopBackCtx);
             }
 
             // Now call the Backup API of your source dataplane (specific to each plugin):
@@ -750,22 +766,9 @@ namespace SamplePlugin.Controllers
             // If your plugin does not rely on VaultMSI token for internal authN, use that.
 
             // Assuming you get a handle to a stream at this point form your native Backup API. 
-            // Using MockSourceDataplane here for illustration
-            Stream backupStream = MockSourceDataplane.DoBackup();
-            byte[] buffer = new byte[MockSourceDataplane.maxReadSize];
-            await backupStream.ReadAsync(buffer, 0, MockSourceDataplane.maxReadSize);
-
+           
             // Get PitMgr
-            // Need to pass the headers to PitMgr so that the same can propogate to DPP-Target dataplane
-            DiagContextServiceInfo diagCtx = new DiagContextServiceInfo()
-            {
-                SubscriptionId = new Guid(Helper.headers["subscriptionid"]),
-                ResourceId = Helper.headers["resourceid"],
-                TaskId = Helper.headers["resourceid"],
-                RequestId = Helper.headers["x-ms-correlation-request-id"]
-            };
-
-            IPitManager pitMgr = PitManagerFactory.Instance.GetPitManager(request.RPCatalogInitializeParams, 
+            IPitManager pitMgr = pitmgrFactory.GetPitManager(request.RPCatalogInitializeParams, 
                 request.DatastoreInitializeParams, logger: _logger, diagContext: diagCtx);
 
             // Create Pit.
@@ -775,7 +778,7 @@ namespace SamplePlugin.Controllers
 
             pit.InitializePitFormatWriter();
 
-            StreamPitFormatWriter pitWriter = pit.PitFormatWriter as StreamPitFormatWriter;
+            IStreamPitFormatWriter pitWriter = pit.PitFormatWriter as IStreamPitFormatWriter;
 
             // Add a storage Unit
             pitWriter.AddStorageUnit("TestStorageUnit", 1);
@@ -783,6 +786,7 @@ namespace SamplePlugin.Controllers
             // Create and write to the stream.
             using (PassthroughStream targetStream = pitWriter.CreateStream(streamName))
             {
+                // Using MockSourceDataplane here for illustration
                 Stream srcStream = MockSourceDataplane.DoBackup();
                 byte[] bytes = new byte[MockSourceDataplane.maxReadSize];
                 int bytesRead = srcStream.Read(bytes, 0, MockSourceDataplane.maxReadSize);
@@ -831,6 +835,21 @@ namespace SamplePlugin.Controllers
         /// <param name="qparams"></param>
         private async void RestoreInternal(RestoreRequest request)
         {
+            // await Task.Delay(10 * 1000);
+            // Need to pass the headers to PitMgr so that the same can propogate to DPP-Target dataplane
+            DiagContextServiceInfo diagCtx = new DiagContextServiceInfo()
+            {
+                SubscriptionId = new Guid(Helper.headers["subscriptionid"]),
+                ResourceId = Helper.headers["x-ms-correlation-request-id"],
+                TaskId = Helper.headers["x-ms-correlation-request-id"],
+                RequestId = Helper.headers["x-ms-correlation-request-id"]
+            };
+
+            // //////////////////////////////////////////////
+            // Setup PitManager mocks - Test environment only
+            // //////////////////////////////////////////////
+            Helper.SetupPitmgrMocks(request.RPCatalogInitializeParams, request.DatastoreInitializeParams, _logger, diagCtx);
+
             // Get the source and target DS and DSSet details from request
             Datasource srcDs = request.SourceDatasource;
             DatasourceSet srcDsSet = request.SourceDatasourceSet;
@@ -846,20 +865,11 @@ namespace SamplePlugin.Controllers
             string loopBackCtx = request.LoopBackContext;
             if (!string.IsNullOrEmpty(loopBackCtx))
             {
-                LoopBackMetadata loopbkMetadata = JsonConvert.DeserializeObject<LoopBackMetadata>(loopBackCtx);
+                //LoopBackMetadata loopbkMetadata = JsonConvert.DeserializeObject<LoopBackMetadata>(loopBackCtx);
             }
 
             // Get PitMgr
-            // Need to pass the headers to PitMgr so that the same can propogate to DPP-Target dataplane
-            DiagContextServiceInfo diagCtx = new DiagContextServiceInfo()
-            {
-                SubscriptionId = new Guid(Helper.headers["subscriptionid"]),
-                ResourceId = Helper.headers["resourceid"],
-                TaskId = Helper.headers["resourceid"],
-                RequestId = Helper.headers["x-ms-correlation-request-id"]
-            };
-
-            IPitManager pitMgr = PitManagerFactory.Instance.GetPitManager(request.RPCatalogInitializeParams,
+            IPitManager pitMgr = pitmgrFactory.GetPitManager(request.RPCatalogInitializeParams,
                 request.DatastoreInitializeParams, logger: _logger, diagContext: diagCtx);
           
             // open the pit in vault
@@ -868,41 +878,33 @@ namespace SamplePlugin.Controllers
             // Initialize the PitReader
             committedPit.InitializePitFormatReader();
 
-            StreamPitFormatReader pitReader = committedPit.PitFormatReader as StreamPitFormatReader;
+            IStreamPitFormatReader pitReader = committedPit.PitFormatReader as IStreamPitFormatReader;
 
-            // Assuming you wrote multiple streams - general case.
-            foreach (var streamInfo in pitReader.StreamInfo)
+            // Get the stream - in this case, we created ONE stream named: "testStream"
+            using (PassthroughStream ptStream = pitReader.OpenStream(streamName, _logger, 1))
             {
-                int index = 0;
-            
-                foreach (var stream in streamInfo.Item2)
-                {
-                    // Get the stream - in this case, we created ONE stream named: "testStream"
-                    using (PassthroughStream ptStream = pitReader.OpenStream(stream, _logger, index))
-                    {
-                        // Now call the Restore API of your source dataplane (specific to each plugin):
-                        //
-                        // e.g. call some API in ARM: Use the vaultMSIMgmtToken as the authorizationHeader in an ARM call like: 
-                        // POST https://management.azure.com/subscriptions/f75d8d8b-6735-4697-82e1-1a7a3ff0d5d4/resourceGroups/viveksipgtest/providers/Microsoft.DBforPostgreSQL/servers/viveksipgtest/Restore?api-version=2017-12-01 
-                        // Use the vaultMSIDataplaneToken as the authorizationHeader in any dataplane calls like:
-                        // POST https://testContainer.blob.core.windows.net/018a635f-f899-4344-9c19-b81f4455d900/Restore  etc...
-                        //
-                        // If your plugin does not rely on VaultMSI token for internal authN, use that.
+                // Now call the Restore API of your source dataplane (specific to each plugin):
+                //
+                // e.g. call some API in ARM: Use the vaultMSIMgmtToken as the authorizationHeader in an ARM call like: 
+                // POST https://management.azure.com/subscriptions/f75d8d8b-6735-4697-82e1-1a7a3ff0d5d4/resourceGroups/viveksipgtest/providers/Microsoft.DBforPostgreSQL/servers/viveksipgtest/Restore?api-version=2017-12-01 
+                // Use the vaultMSIDataplaneToken as the authorizationHeader in any dataplane calls like:
+                // POST https://testContainer.blob.core.windows.net/018a635f-f899-4344-9c19-b81f4455d900/Restore  etc...
+                //
+                // If your plugin does not rely on VaultMSI token for internal authN, use that.
 
-                        // Assuming you get a handle to a stream at this point form your native Restore API. 
-                        // Using MockSourceDataplane here for illustration - this takes the stream directly.
-                        MockSourceDataplane.DoRestore(ptStream);
+                // Assuming you get a handle to a stream at this point form your native Restore API. 
+                // Using MockSourceDataplane here for illustration - this takes the stream directly.
+                MockSourceDataplane.DoRestore(ptStream);
 
-                        // if the Restore API of your workload needs a buffer, use something like:
-                        //byte[] buffer = new byte[MockSourceDataplane.maxReadSize];
-                        //int bytesRead = ptStream.Read(buffer, 0, buffer.Length);
-                        //string outputStr = Encoding.ASCII.GetString(buffer);
+                // if the Restore API of your workload needs a buffer, use something like:
+                //byte[] buffer = new byte[MockSourceDataplane.maxReadSize];
+                //int bytesRead = ptStream.Read(buffer, 0, buffer.Length);
+                //string outputStr = Encoding.ASCII.GetString(buffer);
 
-                        _logger.LogInformation($"{Helper.headers["x-ms-correlation-request-id"]}  {Helper.headers["subscriptionid"]} Completed restore...",
-                              Helper.headers["x-ms-correlation-request-id"],
-                              Helper.headers["subscriptionid"]);
-                    }
-                }
+                _logger.LogInformation($"{Helper.headers["x-ms-correlation-request-id"]}  {Helper.headers["subscriptionid"]} Completed restore...",
+                        Helper.headers["x-ms-correlation-request-id"],
+                        Helper.headers["subscriptionid"]);
+                    
             }
             pitReader.CleanupStorageUnits();
 
