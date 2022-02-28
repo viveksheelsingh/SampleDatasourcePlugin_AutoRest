@@ -9,6 +9,7 @@ namespace SamplePlugin
     {
         private static string backupContent = "Just a small random backup content";
         public static int maxReadSize = backupContent.Length;
+        public static string bkpContentFile = @"backupContent";
 
         public static Stream DoBackup(ILogger logger)
         {
@@ -16,12 +17,12 @@ namespace SamplePlugin
             return new MemoryStream(Encoding.ASCII.GetBytes(backupContent));
         }
 
-        public static void DoRestore(Stream stream, ILogger logger)
+        public static async Task DoRestore(Stream stream, ILogger logger)
         {
             byte[] buffer = new byte[maxReadSize];
-            stream.ReadAsync(buffer, 0, maxReadSize);
+            await stream.ReadAsync(buffer, 0, maxReadSize);
             string restoredContent = Encoding.ASCII.GetString(buffer);
-            logger.LogInformation($"SrcDataplane--> Read from: {restoredContent}", Path.Combine(".", @"bkpstream"), restoredContent);
+            logger.LogInformation("SrcDataplane--> Read: {0} from: {1}", restoredContent, Path.Combine(".", bkpContentFile));
             if (!restoredContent.Equals(backupContent))
             {
                 throw new Exception("Restore content != Backup Content");

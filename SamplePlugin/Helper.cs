@@ -175,15 +175,15 @@ namespace SamplePlugin
 
             fakeWriter.CreateStream(Arg.Any<string>(), Arg.Any<int>(), Arg.Any<bool>())
                  .Returns(x => {
-                     ptStream = new PassthroughStream(new FileStream(Path.Combine(".", @"bkpstream"), FileMode.Create));
-                     logger.LogInformation("Mock--> Created a FileStream at: ", Path.Combine(".", @"bkpstream"));
+                     ptStream = new PassthroughStream(new FileStream(Path.Combine(".", MockSourceDataplane.bkpContentFile), FileMode.Create));
+                     logger.LogInformation("Mock--> Created a FileStream at: {0}", Path.Combine(".", MockSourceDataplane.bkpContentFile));
                      return ptStream;
                  });
 
             fakeReader.OpenStream(Arg.Any<string>(), Arg.Any<ILogger>(), Arg.Any<int>(), Arg.Any<bool>())
                 .Returns(x => {
-                    ptStream = new PassthroughStream(new FileStream(Path.Combine(".", @"bkpstream"), FileMode.Open));
-                    logger.LogInformation("Mock--> Reading a FileStream from: ", Path.Combine(".", @"bkpstream"));
+                    ptStream = new PassthroughStream(new FileStream(Path.Combine(".", MockSourceDataplane.bkpContentFile), FileMode.Open));
+                    logger.LogInformation("Mock--> Reading a FileStream from: {0}", Path.Combine(".", MockSourceDataplane.bkpContentFile));
                     return ptStream;
                 });
 
