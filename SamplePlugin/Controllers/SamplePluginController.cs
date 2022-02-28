@@ -585,10 +585,7 @@ namespace SamplePlugin.Controllers
             Response response = null;
             HttpStatusCode code = HttpStatusCode.OK;
 
-            _logger.LogInformation($"{Request.Headers["x-ms-correlation-request-id"]}  {Request.Headers["subscriptionid"]}   GET operationId:{operationId} ",
-               Request.Headers["x-ms-correlation-request-id"],
-               Request.Headers["subscriptionid"],
-               operationId);
+            _logger.LogInformation($"{Request.Headers["x-ms-correlation-request-id"]}  {Request.Headers["subscriptionid"]}   GET operationId:{operationId} ");
 
             // Get the operation's details from the OperationsMap
             OperationDetails opDetails = OperationsMap.GetOperation(operationId);
@@ -822,9 +819,7 @@ namespace SamplePlugin.Controllers
             pit.Commit();
             pitWriter.CleanupStorageUnits();
 
-            _logger.LogInformation($"{Helper.headers["x-ms-correlation-request-id"]}  {Helper.headers["subscriptionid"]} Committed the Pit...",
-                  Helper.headers["x-ms-correlation-request-id"],
-                  Helper.headers["subscriptionid"]);
+            _logger.LogInformation($"{Helper.headers["x-ms-correlation-request-id"]}  {Helper.headers["subscriptionid"]} Committed the Pit...");
 
             // Update the operation
             OperationsMap.UpdateOperation(Helper.qparams["operationId"], DateTimeOffset.UtcNow);
@@ -906,9 +901,7 @@ namespace SamplePlugin.Controllers
                 //int bytesRead = ptStream.Read(buffer, 0, buffer.Length);
                 //string outputStr = Encoding.ASCII.GetString(buffer);
 
-                _logger.LogInformation($"{Helper.headers["x-ms-correlation-request-id"]}  {Helper.headers["subscriptionid"]} Completed restore...",
-                        Helper.headers["x-ms-correlation-request-id"],
-                        Helper.headers["subscriptionid"]);
+                _logger.LogInformation($"{Helper.headers["x-ms-correlation-request-id"]}  {Helper.headers["subscriptionid"]} Completed restore...");
                     
             }
             pitReader.CleanupStorageUnits();
@@ -927,9 +920,7 @@ namespace SamplePlugin.Controllers
         {
             await Task.Delay(4 * 1000);
 
-            _logger.LogInformation($"{Helper.headers["x-ms-correlation-request-id"]}  {Helper.headers["subscriptionid"]} Test LRO completed...",
-                Helper.headers["x-ms-correlation-request-id"],
-                Helper.headers["subscriptionid"]);
+            _logger.LogInformation($"{Helper.headers["x-ms-correlation-request-id"]}  {Helper.headers["subscriptionid"]} Test LRO completed...");
 
             OperationsMap.UpdateOperation(Helper.qparams["operationId"], DateTimeOffset.UtcNow);
         }
@@ -975,10 +966,7 @@ namespace SamplePlugin.Controllers
 
             try
             {
-                _logger.LogInformation($"{Request.Headers["x-ms-correlation-request-id"]}  {Request.Headers["subscriptionid"]} Starting TestPost:  {createdTime}",
-                    Request.Headers["x-ms-correlation-request-id"],
-                    Request.Headers["subscriptionid"],
-                    createdTime);
+                _logger.LogInformation($"{Request.Headers["x-ms-correlation-request-id"]}  {Request.Headers["subscriptionid"]} Starting TestPost:  {createdTime}");
 
                 TestPayload p1 = new TestPayload()
                 {
