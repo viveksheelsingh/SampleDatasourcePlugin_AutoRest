@@ -793,9 +793,9 @@ namespace SamplePlugin.Controllers
                 // Using MockSourceDataplane here for illustration
                 Stream srcStream = MockSourceDataplane.DoBackup(_logger);
                 byte[] bytes = new byte[MockSourceDataplane.maxReadSize];
-                int bytesRead = srcStream.Read(bytes, 0, MockSourceDataplane.maxReadSize);
-                targetStream.Write(bytes, 0, bytesRead);
-                _logger.LogInformation($"Wrote backup content: ", Encoding.ASCII.GetString(bytes));
+                int bytesRead = await srcStream.ReadAsync(bytes, 0, MockSourceDataplane.maxReadSize);
+                await targetStream.WriteAsync(bytes, 0, bytesRead);
+                _logger.LogInformation("Wrote backup content: {0}", Encoding.ASCII.GetString(bytes));
             }
 
             // Set tags, policyInfo and metadata
@@ -899,7 +899,7 @@ namespace SamplePlugin.Controllers
 
                 // Assuming you get a handle to a stream at this point form your native Restore API. 
                 // Using MockSourceDataplane here for illustration - this takes the stream directly.
-                MockSourceDataplane.DoRestore(ptStream, _logger);
+                await MockSourceDataplane.DoRestore(ptStream, _logger);
 
                 // if the Restore API of your workload needs a buffer, use something like:
                 //byte[] buffer = new byte[MockSourceDataplane.maxReadSize];
