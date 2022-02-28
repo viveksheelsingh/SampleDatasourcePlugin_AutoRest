@@ -1,8 +1,8 @@
-﻿/*/////////////////////////////////////////////////////////////////////////////////////////
+﻿/*///////////////////////////////////////////////////////////////////////////////////////////////////
  * Sample controller code.
- * Complete project available at: https://github.com/viveksheelsingh/SampleDatasourcePlugin
+ * Complete project available at: https://github.com/viveksheelsingh/SampleDatasourcePlugin_AutoRest
  * 
- /////////////////////////////////////////////////////////////////////////////////////////*/
+ //////////////////////////////////////////////////////////////////////////////////////////////////*/
 
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AzureBackup.DatasourcePlugin.Models;
@@ -725,7 +725,6 @@ namespace SamplePlugin.Controllers
         /// <param name="qparams"></param>
         private async void BackupInternal(BackupRequest request)
         {
-            //await Task.Delay(10 * 1000);
             // Need to pass the headers to PitMgr so that the same can propogate to DPP-Target dataplane
             DiagContextServiceInfo diagCtx = new DiagContextServiceInfo()
             {
@@ -734,6 +733,11 @@ namespace SamplePlugin.Controllers
                 TaskId = Helper.headers["x-ms-correlation-request-id"],
                 RequestId = Helper.headers["x-ms-correlation-request-id"]
             };
+
+            // Need to provide token metadata to pitmgr, so that it can retrieve Plugin tokens:
+            //  request.DatastoreInitializeParams[VaultAndStoreInitializationParamsKeys.AuthMetadata] = DppHelper
+            //    .BuildK8sExtensionAuthMetadata(identityProvider).JsonSerialize();
+
 
             // //////////////////////////////////////////////
             // Setup PitManager mocks - Test environment only
